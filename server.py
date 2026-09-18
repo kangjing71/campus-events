@@ -15,7 +15,7 @@ _STORE_NAMES = {'ROOT', 'DB', 'LOCK', 'sqlite3', 'init_db', 'admin_token', 'load
 _DOMAIN_NAMES = {'FIELDS', 'STATES', 'text', 'number', 'invoke', 'tool', 'feedback_evidence',
                  'registration_context', 'PlanningAgent', 'RegistrationAgent', 'PublicityAgent',
                  'OnsiteAgent', 'ReviewAgent', 'metrics', 'Orchestrator', 'new_event',
-                 'public_event', 'run_playground'}
+                 'public_event'}
 _WEB_NAMES = {'Handler', 'main'}
 
 class _ServerModule(ModuleType):

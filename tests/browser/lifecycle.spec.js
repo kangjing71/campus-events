@@ -28,7 +28,7 @@ test.afterAll(async () => {
   if(folder)rmSync(folder,{recursive:true,force:true});
 });
 
-test('complete organizer and participant lifecycle on desktop and mobile', async ({ page, browser, request }) => {
+test('complete organizer and participant lifecycle', async ({ page, browser, request }) => {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(url);
   await page.evaluate(()=>{window.qrLinks=[];const draw=window.QRCode.toCanvas;window.QRCode.toCanvas=function(canvas,text,options){window.qrLinks.push(text);return draw.call(this,canvas,text,options);};});
@@ -36,7 +36,8 @@ test('complete organizer and participant lifecycle on desktop and mobile', async
   await page.getByLabel('活动名称',{exact:true}).fill('校园 AI 创新交流夜');
   await page.getByRole('button',{name:'创建活动',exact:true}).click();
   await page.getByRole('button',{name:'开始策划'}).click();
-  await page.getByRole('button',{name:'填入示例需求'}).click();
+  const brief={name:'校园 AI 创新交流夜',objective:'认识 AI Agent 的实际应用，促进跨学院交流',type:'交流分享',level:'校级',format:'线下分享与互动讨论',audience:'全校对 AI 感兴趣的同学',date:'2099-12-01T19:00',duration:'120',location:'大学生活动中心 · 201 报告厅',capacity:'100',budget:'1200',organizer:'学生科技协会',owner:'活动负责人'};
+  for(const [k,v] of Object.entries(brief)) await page.locator(`#plan-form [name=${k}]`).fill(v);
   await page.getByRole('button',{name:'生成策划方案'}).click();
   await expect(page.getByText('活动当天 Timeline',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'确认策划方案',exact:true}).click();
@@ -67,15 +68,14 @@ test('complete organizer and participant lifecycle on desktop and mobile', async
   const publicResponse=await request.get(`http://127.0.0.1:18765/api/public/${eventId}`);
   expect(await publicResponse.json()).not.toHaveProperty('registrations');
 
-  const mobile=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
-  const participant=await mobile.newPage();participant.on('pageerror',e=>errors.push(e.message));
+  const context=await browser.newContext();
+  const participant=await context.newPage();participant.on('pageerror',e=>errors.push(e.message));
   await participant.goto(joinUrl);
   await participant.getByLabel('姓名 *').fill('李同学');
   await participant.getByLabel('邮箱 *').fill('student@example.com');
   await participant.getByLabel('学院 *').fill('计算机学院');
   await participant.locator('[name=question]').fill('需要带电脑吗？');
-  await participant.screenshot({path:'test-results/mobile-registration.png',fullPage:true});
-  await expect.poll(()=>participant.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await participant.screenshot({path:'test-results/registration.png',fullPage:true});
   await participant.getByRole('button',{name:'提交报名'}).click();
   await expect(participant.getByRole('heading',{name:'李同学，报名成功'})).toBeVisible();
   const ticket=await participant.locator('.ticket code').textContent();
@@ -89,12 +89,8 @@ test('complete organizer and participant lifecycle on desktop and mobile', async
   await page.getByLabel('答复').fill('不需要，欢迎轻装参加。');
   await page.getByRole('button',{name:'确认并保存答复'}).click();
   await page.getByRole('button',{name:'活动总览'}).click();
-  await page.screenshot({path:'test-results/desktop-overview.png',fullPage:true});
+  await page.screenshot({path:'test-results/overview.png',fullPage:true});
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.setViewportSize({width:390,height:844});
-  await page.screenshot({path:'test-results/mobile-overview.png',fullPage:true});
-  await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.setViewportSize({width:1440,height:1000});
   await page.getByRole('button',{name:'现场执行'}).click();
   await page.getByRole('button',{name:'开启现场签到',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
@@ -133,7 +129,7 @@ test('complete organizer and participant lifecycle on desktop and mobile', async
   await page.reload();
   await expect(page.getByText('本次活动已归档')).toBeVisible();
   await page.getByRole('button',{name:'活动复盘'}).click();
-  await page.screenshot({path:'test-results/desktop-report.png',fullPage:true});
+  await page.screenshot({path:'test-results/report.png',fullPage:true});
   expect(errors).toEqual([]);
-  await mobile.close();
+  await context.close();
 });

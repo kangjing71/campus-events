@@ -69,9 +69,6 @@ DRAFT → WAITING_PLAN_CONFIRMATION → PLAN_CONFIRMED
 | POST | `/api/events/:id/actions/:action` | 执行业务动作及审批 |
 | GET | `/api/events/:id/export` | 下载报名 CSV |
 | GET | `/api/agents` | 查看五个角色的脱敏配置状态 |
-| POST | `/api/agents/:role/test` | 真实模型连通与 JSON 输出测试 |
-| GET / POST | `/api/agents/:role/playground` | 独立测试样例 / 运行单个角色的业务测试 |
-| GET | `/api/agent-runs` | 最近 100 次调用状态、耗时和工具记录 |
 | GET | `/api/public/:id` | 脱敏活动信息 |
 | POST | `/api/public/:id/register` | 报名并获得凭证 |
 | POST | `/api/public/:id/ticket` | 凭凭证查询自己的报名及答复 |

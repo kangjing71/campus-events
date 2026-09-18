@@ -10,7 +10,6 @@ import urllib.request
 from unittest.mock import patch
 import server as s
 from agents import runtime
-from agents import playground
 from mock_provider import Provider, BRIEF, ThreadingHTTPServer
 
 
@@ -182,84 +181,6 @@ class AgentIntegrationTests(unittest.TestCase):
         s.PlanningAgent.generate(self.e, BRIEF)
         self.assertEqual(Provider.calls[0]['body']['model'], 'hot-reload')
         self.assertTrue(Provider.calls[0]['body']['messages'][0]['content'].startswith('自定义策划 prompt'))
-
-    def test_independent_playgrounds_only_call_selected_role_and_preserve_events(self):
-        s.save(self.e)
-        baseline = s.load(self.e['id'])
-        for role, tasks in playground.TASKS.items():
-            for task in tasks:
-                with self.subTest(role=role, task=task):
-                    Provider.calls = []
-                    result = s.run_playground(role, {'task': task, **playground.example(task)})
-                    self.assertTrue(Provider.calls)
-                    self.assertTrue(all(call['path'] == '/'+role for call in Provider.calls))
-                    self.assertEqual(result['run']['scope'], 'playground')
-                    self.assertEqual(result['run']['status'], 'success')
-                    self.assertFalse(result['persisted_to_event'])
-                    self.assertEqual(s.load(self.e['id']), baseline)
-        with s.sqlite3.connect(s.DB) as c:
-            self.assertEqual(c.execute('SELECT COUNT(*) FROM events').fetchone()[0], 1)
-            rows = c.execute('SELECT event_id FROM agent_runs').fetchall()
-            self.assertTrue(rows)
-            self.assertTrue(all(row[0] is None for row in rows))
-
-    def test_playground_rejects_invalid_input_before_model_call(self):
-        with self.assertRaises(ValueError):
-            s.run_playground('planning', {'task': 'generate_review', **playground.example('generate_review')})
-        fixture = playground.example('analyze_onsite')
-        fixture['input']['feedback'][0]['participant_index'] = 30
-        with self.assertRaisesRegex(ValueError, '反馈'):
-            s.run_playground('onsite', {'task': 'analyze_onsite', **fixture})
-        fixture = playground.example('generate_plan')
-        fixture['input']['brief']['budget'] = float('nan')
-        with self.assertRaises(ValueError):
-            s.run_playground('planning', {'task': 'generate_plan', **fixture})
-        self.assertEqual(Provider.calls, [])
-
-    def test_rule_playground_results_are_labeled_and_do_not_call_provider(self):
-        with patch.dict(os.environ, {r.upper()+'_MODE': 'rules' for r in runtime.ROLES}):
-            for role, tasks in playground.TASKS.items():
-                for task in tasks:
-                    result = s.run_playground(role, {'task': task, **playground.example(task)})
-                    self.assertEqual(result['run']['mode'], 'rules')
-                    self.assertFalse(result['persisted_to_event'])
-        self.assertEqual(Provider.calls, [])
-
-    def test_playground_conversation_can_continue_without_creating_event(self):
-        first = s.run_playground('planning', {'task': 'collect_brief', 'input': {'brief': {'name': '测试'}, 'history': []}, 'message': '先讨论目标'})
-        second = s.run_playground('planning', {'task': 'collect_brief', 'input': first['next_input'], 'message': '补齐信息'})
-        self.assertEqual(len(second['next_input']['history']), 4)
-        self.assertEqual(second['result']['brief']['capacity'], 100)
-        self.assertEqual(second['result']['missing_fields'], [])
-
-    def test_playground_endpoints_require_auth_and_do_not_create_events(self):
-        app = ThreadingHTTPServer(('127.0.0.1', 0), s.Handler)
-        worker = threading.Thread(target=app.serve_forever, daemon=True)
-        worker.start()
-        root = f'http://127.0.0.1:{app.server_port}'
-        path = '/api/agents/registration/playground'
-        try:
-            with self.assertRaises(urllib.error.HTTPError) as caught:
-                urllib.request.urlopen(root+path)
-            self.assertEqual(caught.exception.code, 401)
-            caught.exception.close()
-            headers = {'Authorization': 'Bearer '+s.admin_token(), 'Content-Type': 'application/json'}
-            with urllib.request.urlopen(urllib.request.Request(root+path, headers=headers)) as response:
-                catalog = json.load(response)
-            fixture = catalog['tasks'][0]
-            payload = {'task': fixture['id'], 'input': fixture['input'], 'message': fixture['message']}
-            with urllib.request.urlopen(urllib.request.Request(root+path, json.dumps(payload).encode(), headers)) as response:
-                result = json.load(response)
-            self.assertEqual(result['result']['answer'], '活动地点：'+fixture['input']['brief']['location'])
-            self.assertEqual(result['run']['role'], 'registration')
-            with s.sqlite3.connect(s.DB) as c:
-                self.assertEqual(c.execute('SELECT COUNT(*) FROM events').fetchone()[0], 0)
-            with urllib.request.urlopen(root+'/agents/registration') as response:
-                self.assertIn('agent-lab.js', response.read().decode())
-        finally:
-            app.shutdown()
-            app.server_close()
-            worker.join()
 
     def test_slow_model_does_not_block_registration_or_overwrite_changes(self):
         self.open()

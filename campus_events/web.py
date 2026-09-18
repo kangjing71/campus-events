@@ -9,10 +9,9 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 from agents import runtime
-from agents import playground
 from . import store
 from .store import ROOT, LOCK, init_db, admin_token, load, save
-from .domain import (Problem, invoke, new_event, metrics, public_event, run_playground,
+from .domain import (Problem, new_event, metrics, public_event,
                      PlanningAgent, RegistrationAgent, OnsiteAgent, Orchestrator)
 
 
@@ -48,15 +47,6 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(401, {'error': '请输入负责人访问密钥'})
                 if path == '/api/agents':
                     return self.send(200, runtime.status())
-                lab = re.fullmatch(r'/api/agents/(planning|publicity|registration|onsite|review)/playground', path)
-                if lab:
-                    role = lab[1]
-                    return self.send(200, {'role': role, 'config': runtime.status()[role],
-                        'tasks': [{'id': task, 'name': name, **playground.example(task)} for task, name in playground.TASKS[role].items()]})
-                if path == '/api/agent-runs':
-                    with store.sqlite3.connect(store.DB) as c:
-                        runs = [dict(json.loads(row[1]), event_id=row[0]) for row in c.execute('SELECT event_id, data FROM agent_runs ORDER BY rowid DESC LIMIT 100')]
-                    return self.send(200, runs)
                 if path == '/api/events':
                     with store.sqlite3.connect(store.DB) as c:
                         events = [json.loads(r[0]) for r in c.execute('SELECT data FROM events')]
@@ -74,10 +64,7 @@ class Handler(BaseHTTPRequestHandler):
                         return self.send(200, '\ufeff' + stream.getvalue(), 'text/csv; charset=utf-8')
                     return self.send(200, dict(e, metrics=metrics(e)))
                 return self.send(404, {'error': '接口不存在'})
-            if re.fullmatch(r'/agents/(planning|publicity|registration|onsite|review)', path):
-                filename = 'agent-lab.html'
-            else:
-                filename = 'index.html' if path == '/' or path.startswith('/join/') else path.removeprefix('/static/')
+            filename = 'index.html' if path == '/' or path.startswith('/join/') else path.removeprefix('/static/')
             target = (ROOT / 'static' / filename).resolve()
             if not target.is_relative_to(ROOT / 'static') or not target.is_file():
                 return self.send(404, 'Not found', 'text/plain')
@@ -98,18 +85,6 @@ class Handler(BaseHTTPRequestHandler):
             public = re.fullmatch(r'/api/public/([\w-]+)/(register|checkin|feedback|ticket)', path)
             if not public and not self.authorized():
                 return self.send(401, {'error': '请输入负责人访问密钥'})
-            lab = re.fullmatch(r'/api/agents/(planning|publicity|registration|onsite|review)/playground', path)
-            if lab:
-                try:
-                    return self.send(200, run_playground(lab[1], data))
-                except (Problem, runtime.AgentError, ValueError, TypeError) as ex:
-                    return self.send(400, {'error': str(ex)})
-            test = re.fullmatch(r'/api/agents/(planning|publicity|registration|onsite|review)/test', path)
-            if test:
-                if runtime.settings(test[1])['mode'] != 'model':
-                    raise Problem('该 Agent 尚未配置模型接口，不能执行连通测试')
-                result = invoke({'_run_scope': 'connection'}, test[1], 'connection_test', {'instruction': '连通测试，请返回 {"ok":true}'}, {'ok': True})
-                return self.send(200, result)
             with LOCK:
                 if public:
                     eid, action = public.groups()

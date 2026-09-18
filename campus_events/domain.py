@@ -1,10 +1,9 @@
-"""Domain logic for campus events: agents, orchestration and playground."""
+"""Domain logic for campus events: agents and orchestration."""
 import json
 import re
 import secrets
 from datetime import datetime, timedelta
 from agents import runtime
-from agents import playground
 from agents.contracts import validate_plan
 from . import store
 from .store import Problem, now
@@ -429,51 +428,3 @@ def public_event(e):
             'remaining': max(0, e['brief'].get('capacity', 0) - len(e['registrations'])),
             'publicity': e.get('publicity', {}).get('article') if e.get('publicity', {}).get('approved') else None}
 
-
-def run_playground(role, request):
-    task = request.get('task')
-    data = request.get('input')
-    playground.validate_input(role, task, data)
-    message = request.get('message', '')
-    if not isinstance(message, str) or len(message) > 6000:
-        raise Problem('测试补充要求最多 6000 个字符')
-    # Scratch context never receives a real event ID and is never passed to save().
-    e = {'state': 'DRAFT', 'brief': data['brief'], 'revision': 0, 'logs': [], 'registrations': [],
-         'feedback_pool': [], 'adjustments': [], '_run_scope': 'playground'}
-    if 'plan' in data:
-        e['plan'] = data['plan']
-        e['approved_plan'] = data['plan']
-    e['registration_path'] = data.get('registration_path', '/join/example-preview')
-    for i, r in enumerate(data.get('participants', [])):
-        e['registrations'].append({**r, 'id': 'sample-'+str(i), 'checked_at': now() if r['checked_in'] else None})
-    for f in data.get('feedback', []):
-        e['feedback_pool'].append({**f, 'ticket': 'sample-'+str(int(f['participant_index'])), 'at': now()})
-    if task == 'collect_brief':
-        e['planning_messages'] = data['history']
-        PlanningAgent.collect(e, {'message': message})
-        answer = e['planning_messages'][-1]
-        result = {'brief': e['brief'], 'reply': answer['content'], 'questions': answer['questions'], 'missing_fields': answer['missing_fields']}
-        next_input = {'brief': e['brief'], 'history': [{k: m[k] for k in ('role', 'content')} for m in e['planning_messages']]}
-    elif task == 'generate_plan':
-        PlanningAgent.generate(e, {**data['brief'], 'instruction': message})
-        result = e['plan']
-    elif task in ('generate_publicity', 'generate_recap'):
-        if task == 'generate_recap':
-            e['review'] = {'summary': '独立测试中的示例复盘数据', 'metrics': metrics(e), 'approved': True}
-        PublicityAgent.generate(e, recap=task == 'generate_recap', instruction=message)
-        result = e['recap' if task == 'generate_recap' else 'publicity']
-    elif task == 'answer_question':
-        e['registrations'] = [{'id': 'sample-question', 'question': data['question']}]
-        RegistrationAgent.answer_question(e, {'ticket': 'sample-question'})
-        result = e['registrations'][0]['answer_draft']
-    elif task == 'analyze_registration':
-        RegistrationAgent.analyze(e)
-        result = e['registration_analysis']
-    elif task == 'analyze_onsite':
-        OnsiteAgent.analyze(e, {'message': message})
-        result = e['onsite_analysis']
-    elif task == 'generate_review':
-        ReviewAgent.generate(e)
-        result = e['review']
-    return {'role': role, 'task': task, 'result': result, 'run': e['agent_runs'][-1],
-            'next_input': next_input if task == 'collect_brief' else data, 'persisted_to_event': False}
