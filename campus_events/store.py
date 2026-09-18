@@ -38,7 +38,12 @@ def load(eid):
         row = c.execute('SELECT data FROM events WHERE id=?', (eid,)).fetchone()
     if not row:
         raise Problem('活动不存在')
-    return json.loads(row[0])
+    e = json.loads(row[0])
+    if e.get('plan') and not e.get('plan_md'):
+        # 旧数据迁移：结构化方案补充 Markdown 版本
+        from .domain import render_plan_md
+        e['plan_md'] = render_plan_md(e)
+    return e
 
 
 def save(e):

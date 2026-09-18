@@ -7,6 +7,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BRIEF = {'name': '模型生成的校园交流会', 'objective': '促进跨学院交流', 'type': '交流', 'level': '校级', 'format': '线下',
          'date': '2026-10-10T19:00', 'location': '大学报告厅', 'audience': '全校学生', 'capacity': 100,
          'budget': 1200, 'organizer': '科技协会', 'owner': '负责人', 'duration': 120, 'constraints': '21:00 前结束'}
+PLAN_MD = ('# 模型生成的校园交流会 · 策划方案\n\n'
+           '- **活动时间**：2026-10-10 19:00\n- **活动地点**：大学报告厅\n\n'
+           '## 活动概述\n\n模型策划：加入跨学院讨论，按时结束。\n\n'
+           '## 预算分配\n\n| 项目 | 金额 |\n| --- | --- |\n| 物资 | ¥1200 |\n')
 
 
 def output(task, context):
@@ -72,14 +76,21 @@ class Provider(BaseHTTPRequestHandler):
         if mode == 'slow':
             self.entered.set()
             self.release.wait(8)
-        if not custom and data.get('tools') and not any(m['role'] == 'tool' for m in data['messages']):
+        if not custom and data.get('tools'):
+            tool_rounds = sum(1 for m in data['messages'] if m['role'] == 'tool')
+            names = [t['function']['name'] for t in data['tools']]
+            name = arguments = None
             if mode == 'forbidden':
-                name = 'delete_everything'
-            elif task == 'collect_brief' and '生成' in str(context.get('message', '')) and any(t['function']['name'] == 'generate_plan' for t in data['tools']):
-                name = 'generate_plan'
-            else:
-                name = data['tools'][0]['function']['name']
-            return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'read-1', 'type': 'function', 'function': {'name': name, 'arguments': '{}'}}]}}]})
+                name, arguments = 'delete_everything', '{}'
+            elif task == 'collect_brief' and '生成' in str(context.get('message', '')) and 'get_plan_skill' in names:
+                if tool_rounds == 0:
+                    name, arguments = 'get_plan_skill', '{}'
+                elif tool_rounds == 1:
+                    name, arguments = 'write_file', json.dumps({'path': 'plan.md', 'content': PLAN_MD}, ensure_ascii=False)
+            elif tool_rounds == 0:
+                name, arguments = names[0], '{}'
+            if name:
+                return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'call-' + str(tool_rounds), 'type': 'function', 'function': {'name': name, 'arguments': arguments}}]}}]})
         result = output(task, context)
         if mode == 'invalid' or (mode == 'repair' and len(data.get('messages', [])) < 3):
             result = {'wrong': 'shape'}

@@ -49,7 +49,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send(200, runtime.status())
                 if path == '/api/events':
                     with store.sqlite3.connect(store.DB) as c:
-                        events = [json.loads(r[0]) for r in c.execute('SELECT data FROM events')]
+                        events = [load(r[0]) for r in c.execute('SELECT id FROM events')]
                     return self.send(200, sorted([dict(e, metrics=metrics(e)) for e in events], key=lambda e: e['created_at'], reverse=True))
                 match = re.fullmatch(r'/api/events/([\w-]+)(/export)?', path)
                 if match:
@@ -179,6 +179,13 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         save(e)
                         emit('done', dict(e, metrics=metrics(e)))
+            if failed:
+                # 对话轮出错时，workspace 中已写入的方案文件仍同步保存，避免成果丢失
+                PlanningAgent._sync_plan_file(e)
+                if e.get('plan_md'):
+                    with LOCK:
+                        if load(eid).get('version') == version:
+                            save(e)
         except (BrokenPipeError, ConnectionResetError):
             pass
         except (Problem, runtime.AgentError) as ex:

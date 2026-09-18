@@ -44,8 +44,13 @@
 .chat-send{width:44px;height:44px;border-radius:50%;padding:0;flex-shrink:0}
 .chat-rules-entry{display:flex;align-items:center;justify-content:flex-end;gap:12px}
 .chat-bubble.tool-status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
-.plan-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px 26px}
-.plan-card-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:18px;padding-top:16px}
+.file-chip{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.file-chip:hover{border-color:#9dbfae;box-shadow:0 4px 14px #24483014}
+.file-chip svg:first-child{color:#4f8262;width:22px;height:22px}
+.file-chip-main{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
+.file-chip-main strong{font-size:13px;color:#2e3d33}
+.file-chip>svg:last-child{color:#9aa8a0}
+.plan-preview{max-height:55vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:6px}
 .plan-md h3{font-size:17px;margin:0 0 14px;overflow-wrap:anywhere}
 .plan-md h4{font-size:14px;margin:20px 0 10px;color:#2e3d33}
 .plan-md h5{font-size:13px;margin:14px 0 8px}

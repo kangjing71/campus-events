@@ -3,7 +3,7 @@ import json
 import re
 import secrets
 from datetime import datetime, timedelta
-from agents import runtime
+from agents import runtime, workspace
 from agents.agent import Agent
 from agents.contracts import validate_plan
 from . import store
@@ -113,19 +113,34 @@ class PlanningAgent:
     def _collect_inputs(e, message):
         full_history = e.get('planning_messages', [])
         history = full_history[-20:]
-        context = {'current_time': now(), 'brief': e['brief'], 'history': history, 'message': message, 'required_fields': {k: FIELDS[k] for k in REQUIRED}}
+        context = {'current_time': now(), 'brief': e['brief'], 'history': history, 'message': message}
         fallback = {'brief_patch': {}, 'reply': '策划 Agent 尚未配置模型接口，请通过下方「填写需求表单」补充信息；已保留你的需求描述。', 'questions': []}
 
-        def generate_plan():
+        def plan_skill(_args):
             try:
-                PlanningAgent.generate(e, dict(e['brief']))
-            except Problem as ex:
-                return {'generated': False, 'error': str(ex), 'note': '信息不足或无效，请继续向负责人追问这些信息，收齐后再次调用本工具'}
-            return {'generated': True, 'revision': e['revision'],
-                    'note': '活动计划已生成并展示给负责人，等待负责人在页面确认开始实施；请告知负责人方案已就绪'}
+                return {'ok': True, 'skill': (store.ROOT / 'skills' / 'plan_draft.md').read_text(encoding='utf-8')}
+            except OSError:
+                return {'ok': False, 'error': '策划方案生成技能文件缺失'}
 
         return context, fallback, {'get_event_brief': tool('读取当前活动需求', e['brief']),
-                                   'generate_plan': action_tool('当活动需求信息（含活动时长）已齐全时，生成活动计划（Markdown）并展示给负责人确认；信息不足时会返回缺少的字段', generate_plan)}
+                                   'get_plan_skill': action_tool('读取策划方案生成技能；生成或修改 plan.md 前必须先读取', plan_skill),
+                                   **workspace.workspace_tools(e['id'])}
+
+    @staticmethod
+    def _sync_plan_file(e):
+        """把 workspace 中的 plan.md 同步到活动数据：内容变化时升级版本并进入待确认状态。"""
+        try:
+            path = workspace.workspace_dir(e['id']) / 'plan.md'
+            content = path.read_text(encoding='utf-8') if path.is_file() else None
+        except (OSError, UnicodeError):
+            content = None
+        if not content or not content.strip() or content == e.get('plan_md'):
+            return
+        e['plan_md'] = content
+        e['revision'] += 1
+        if e['state'] == 'DRAFT':
+            e['state'] = 'WAITING_PLAN_CONFIRMATION'
+        log(e, '策划', f"生成第 {e['revision']} 版策划方案（plan.md），等待负责人确认")
 
     @staticmethod
     def _apply_collect(e, message, result):
@@ -137,17 +152,11 @@ class PlanningAgent:
                     raise ValueError()
             except ValueError:
                 raise Problem('模型提取的活动时间无效，请明确提供本地日期与时间')
-        if brief != e['brief']:
-            if e.get('plan'):
-                e['previous_plan'] = e.pop('plan')
-                e.pop('plan_md', None)
-            e['state'] = 'DRAFT'
-            e['brief'] = brief
-        missing = [FIELDS[key] for key in REQUIRED if brief.get(key) is None or str(brief[key]).strip() == '']
-        result['missing_fields'] = missing
+        e['brief'] = brief
         e['planning_messages'] = (e.get('planning_messages', []) + [{'role': 'user', 'content': message},
-            {'role': 'assistant', 'content': result['reply'], 'questions': result['questions'], 'missing_fields': missing}])[-40:]
-        log(e, '策划', '已处理需求对话' + ('，还需补充：' + '、'.join(missing) if missing else '，基础信息已齐全'))
+            {'role': 'assistant', 'content': result['reply'], 'questions': result['questions'], 'missing_fields': []}])[-40:]
+        PlanningAgent._sync_plan_file(e)
+        log(e, '策划', '已处理需求对话')
 
     @staticmethod
     def collect(e, data):
@@ -292,7 +301,7 @@ class PublicityAgent:
         fallback = {'article': core + '\n\n' + ('感谢每一位参与者的投入，期待下一次相聚。' if recap else '欢迎带着问题和好奇心前来，与同学们一起交流。'),
                   'group': core + ('\n感谢参与，期待再见！' if recap else '\n欢迎报名参加！'),
                   'schedule': ['T-7 首轮招募', 'T-3 活动亮点与报名进度', 'T-1 活动提醒'] if not recap else ['复盘确认后发布活动总结']}
-        context = {'brief': b, 'plan': e.get('approved_plan', e['plan']), 'registration_path': e['registration_path'],
+        context = {'brief': b, 'plan': e.get('approved_plan') or e.get('plan') or e.get('approved_plan_md') or e.get('plan_md'), 'registration_path': e['registration_path'],
                    'review': e.get('review') if recap else None, 'metrics': metrics(e), 'instruction': str(instruction)[:6000],
                    'current_copy': e.get('recap' if recap else 'publicity')}
         def check(output):
@@ -309,6 +318,8 @@ class PublicityAgent:
 class OnsiteAgent:
     @staticmethod
     def analyze(e, data):
+        if not e.get('plan'):
+            raise Problem('当前活动没有结构化执行时间线，现场分析暂不可用')
         if e.get('pending_adjustment'):
             raise Problem('请先处理当前待确认调整，再进行现场分析')
         evidence = feedback_evidence(e)
@@ -375,6 +386,8 @@ def metrics(e):
 class ReviewAgent:
     @staticmethod
     def generate(e):
+        if not e.get('plan'):
+            raise Problem('当前活动没有结构化目标数据，复盘生成暂不可用')
         s = metrics(e)
         targets = e['plan']['targets']
         comparison = [{'key': key, 'target': target, 'actual': s[key], 'met': s[key] >= target if s[key] is not None else None} for key, target in targets.items()]
@@ -443,9 +456,13 @@ class Orchestrator:
             e['revision'] += 1
             log(e, '策划', '负责人修改方案正文，等待确认')
         elif action == 'confirm_plan':
+            if not e.get('plan_md'):
+                raise Problem('还没有可实施的策划方案')
             e['state'] = 'PLAN_CONFIRMED'
-            e['approved_plan'] = json.loads(json.dumps(e['plan']))
-            log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版')
+            e['approved_plan_md'] = e['plan_md']
+            if e.get('plan'):
+                e['approved_plan'] = json.loads(json.dumps(e['plan']))
+            log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版，开始实施')
             RegistrationAgent.create(e)
         elif action == 'publicity':
             PublicityAgent.generate(e, instruction=data.get('instruction', ''))
@@ -514,6 +531,7 @@ class Orchestrator:
 def new_event(name='未命名活动'):
     e = {'id': secrets.token_urlsafe(9), 'state': 'DRAFT', 'brief': {'name': text(name, '活动名称', 500)}, 'revision': 0,
          'registrations': [], 'feedback_pool': [], 'logs': [], 'adjustments': [], 'created_at': now()}
+    workspace.workspace_dir(e['id'])
     log(e, '总控', '创建活动，等待补充策划信息')
     return e
 

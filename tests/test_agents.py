@@ -74,7 +74,7 @@ class AgentIntegrationTests(unittest.TestCase):
     def test_all_five_roles_routed_with_distinct_credentials_and_tools(self):
         s.Orchestrator.act(self.e, 'planning_chat', {'message': '先讨论目标'})
         self.assertEqual(self.e['state'], 'DRAFT')
-        self.assertIn('活动时间', self.e['planning_messages'][-1]['missing_fields'])
+        self.assertEqual(self.e['planning_messages'][-1]['missing_fields'], [])
         s.Orchestrator.act(self.e, 'planning_chat', {'message': '补齐活动信息'})
         s.Orchestrator.act(self.e, 'plan_from_brief', {})
         self.assertIn('模型策划', self.e['plan']['summary'])

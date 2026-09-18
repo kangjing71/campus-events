@@ -158,11 +158,22 @@ class StreamCallTests(unittest.TestCase):
 
     def test_tool_handler_result_sent_to_model(self):
         StreamHandler.scenario = 'tool'
-        tools = {'get_event_brief': {'description': '生成方案', 'data': None, 'handler': lambda: {'generated': True}}}
+        tools = {'get_event_brief': {'description': '生成方案', 'data': None, 'handler': lambda args: {'generated': True}}}
         events = self.events_for(tools=tools)
         self.assertEqual(events[-1]['type'], 'result')
         tool_messages = [m for m in StreamHandler.calls[-1]['messages'] if m['role'] == 'tool']
         self.assertEqual(json.loads(tool_messages[0]['content']), {'generated': True})
+
+    def test_tool_arguments_validated_against_parameters(self):
+        StreamHandler.scenario = 'tool'
+        tools = {'get_event_brief': {'description': '带参数工具', 'data': None,
+                                     'parameters': {'type': 'object', 'properties': {'path': {'type': 'string'}},
+                                                    'required': ['path'], 'additionalProperties': False},
+                                     'handler': lambda args: {'path': args['path']}}}
+        # mock 固定回 '{}',缺 required 字段 → 参数校验失败
+        events = self.events_for(tools=tools)
+        self.assertEqual(events[-1]['type'], 'error')
+        self.assertIn('无效参数', events[-1]['message'])
 
     def test_agent_run_returns_value(self):
         self.assertEqual(Agent('planning').run('collect_brief', {'message': '办活动'}), RESULT)
