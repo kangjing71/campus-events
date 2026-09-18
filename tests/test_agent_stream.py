@@ -156,6 +156,14 @@ class StreamCallTests(unittest.TestCase):
         self.assertEqual(len(tool_messages), 1)
         self.assertEqual(json.loads(tool_messages[0]['content']), {'name': '活动'})
 
+    def test_tool_handler_result_sent_to_model(self):
+        StreamHandler.scenario = 'tool'
+        tools = {'get_event_brief': {'description': '生成方案', 'data': None, 'handler': lambda: {'generated': True}}}
+        events = self.events_for(tools=tools)
+        self.assertEqual(events[-1]['type'], 'result')
+        tool_messages = [m for m in StreamHandler.calls[-1]['messages'] if m['role'] == 'tool']
+        self.assertEqual(json.loads(tool_messages[0]['content']), {'generated': True})
+
     def test_agent_run_returns_value(self):
         self.assertEqual(Agent('planning').run('collect_brief', {'message': '办活动'}), RESULT)
 

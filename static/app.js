@@ -73,17 +73,56 @@ function chatBubble(m) {
   const miss=m.missing_fields?.length?`<p class="small muted">待补充：${m.missing_fields.map(esc).join('、')}</p>`:'';
   return `<div class="chat-row ${m.role==='user'?'from-user':''}"><div class="chat-bubble"><p>${esc(m.content)}</p>${qs}${miss}</div></div>`;
 }
+function md(src) {
+  const inline=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  let html='',list=false,table=null;
+  const closeBlocks=()=>{if(list){html+='</ul>';list=false;}if(table){html+=`<div class="table-wrap"><table><thead><tr>${table[0].map(c=>`<th>${inline(c)}</th>`).join('')}</tr></thead><tbody>${table.slice(1).map(r=>`<tr>${r.map(c=>`<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;table=null;}};
+  for(const raw of String(src).split('\n')){
+    const line=raw.trim();
+    if(!line){closeBlocks();continue;}
+    if(line.startsWith('|')){
+      const cells=line.split('|').slice(1,-1).map(c=>c.trim());
+      if(cells.length&&cells.every(c=>/^:?-{2,}:?$/.test(c)))continue;
+      if(list){html+='</ul>';list=false;}
+      if(!table)table=[];
+      table.push(cells);continue;
+    }
+    closeBlocks();
+    const h=line.match(/^(#{1,3})\s+(.*)/);
+    if(h){html+=`<h${h[1].length+2}>${inline(h[2])}</h${h[1].length+2}>`;continue;}
+    const li=line.match(/^[-*]\s+(.*)/);
+    if(li){html+=`${list?'':'<ul>'}<li>${inline(li[1])}</li>`;list=true;continue;}
+    html+=`<p>${inline(line)}</p>`;
+  }
+  closeBlocks();
+  return html;
+}
+const requiredFields=[['name','活动名称'],['type','活动类型'],['format','活动形式'],['audience','目标参与者'],['date','活动时间'],['location','活动地点'],['capacity','预计人数'],['budget','预算']];
+function briefValue(b,k) {
+  const v=b[k];
+  if(v===undefined||v===null||String(v).trim()==='')return '';
+  if(k==='date')return fmt(v);
+  if(k==='capacity')return v+' 人';
+  if(k==='budget')return '¥ '+Number(v).toLocaleString();
+  return String(v);
+}
+function briefProgress(b) {
+  const filled=requiredFields.filter(([k])=>briefValue(b,k)).length;
+  return `<div class="brief-progress"><div class="brief-progress-head"><h3>已掌握的策划信息</h3><span class="small muted">${filled} / ${requiredFields.length}</span></div><div class="brief-fields">${requiredFields.map(([k,label])=>{const v=briefValue(b,k);return `<div class="brief-field ${v?'':'missing'}"><span class="brief-label">${label}</span><span class="brief-value">${v?esc(v):'待补充'}</span></div>`;}).join('')}</div></div>`;
+}
 function planDraft() {
   const e=event, msgs=e.planning_messages||[];
-  const ready=msgs.length>0 && !(msgs[msgs.length-1].missing_fields||[]).length;
-  const welcome=`<div class="chat-welcome"><h2>告诉我想办什么活动</h2><p>用一两句话描述你的想法，我会逐步追问细节，信息齐全后生成完整方案。</p><div class="chips"><button class="chip" data-chat-example="想办一场 100 人的 AI 交流会，预算 1200 元，促进跨学院交流，下周五晚上在学生活动中心">办一场 AI 交流会</button><button class="chip" data-chat-example="想办一场户外草坪音乐节，面向全校师生，预算 5000 元，需要安排舞台和音响">办一场草坪音乐节</button><button class="chip" data-chat-example="想办一次求职经验分享会，邀请 3 位已毕业的学长学姐，规模 50 人左右，预算 500 元">办一场求职分享会</button></div></div>`;
-  return `<div class="chat-wrap"><div class="chat-scroll">${msgs.length?msgs.map(chatBubble).join(''):welcome}</div><div class="chat-compose">${ready?button('生成策划方案','plan-from-chat',true,'sparkles'):'<p class="small muted">还差一些信息，继续聊聊吧</p>'}<form id="planning-chat-form"><label class="sr-only" for="planning-message">用一段话描述活动</label><textarea id="planning-message" name="message" required maxlength="6000" placeholder="${msgs.length?'继续补充活动信息……':'例如：想办一场 100 人的 AI 交流会，预算 1200 元，下周五晚上在学生活动中心'}"></textarea><button class="primary chat-send" type="submit" aria-label="发送">${icon('send')}</button></form></div></div>`;
+  const chips=[['补充时间与地点','计划下周五晚 7 点在学生活动中心举办，预计 100 人参加'],['补充形式与预算','以分享交流的形式进行，预算 1200 元，促进跨学院同学互动'],['补充嘉宾与规模','邀请 3 位已毕业的学长学姐做分享，规模 50 人左右，预算 500 元']];
+  const welcome=`<div class="chat-welcome"><h2>为「${esc(e.brief.name)}」补充策划信息</h2><p>活动已创建。告诉我时间、地点、规模、预算等安排，我会逐步追问，信息齐全后我会生成完整方案。</p><div class="chips">${chips.map(([label,text])=>`<button class="chip" data-chat-example="${esc(text)}">${label}</button>`).join('')}</div></div>${briefProgress(e.brief)}`;
+  const card=e.plan_md&&e.state==='WAITING_PLAN_CONFIRMATION'?`<div class="plan-card"><div class="plan-md">${md(e.plan_md)}</div><div class="plan-card-actions"><span class="small muted">确认无误后开始实施；如需调整，直接在下方告诉我。</span>${button('开始实施','confirm_plan',true,'check')}</div></div>`:'';
+  const placeholder=msgs.length?'继续补充活动信息……':`例如：${e.brief.name}计划下周五晚 7 点在学生活动中心举办，预计 100 人，预算 1200 元`;
+  const rulesEntry=mode==='rules'?`<div class="chat-rules-entry"><span class="small muted">未配置模型接口，可改用表单补充信息</span>${button('填写需求表单','edit-brief',false,'clipboard-list')}</div>`:'';
+  return `<div class="chat-wrap"><div class="chat-scroll">${msgs.length?msgs.map(chatBubble).join(''):welcome}${card}</div>${rulesEntry}<div class="chat-compose"><form id="planning-chat-form"><label class="sr-only" for="planning-message">用一段话描述活动</label><textarea id="planning-message" name="message" required maxlength="6000" placeholder="${esc(placeholder)}"></textarea><button class="primary chat-send" type="submit" aria-label="发送">${icon('send')}</button></form></div></div>`;
 }
 function planView() {
   const e=event,p=e.plan;
-  if (!p) return planDraft();
-  const editable=e.state==='WAITING_PLAN_CONFIRMATION';
-  return `${editable?'<div class="inline-note warning">请核对方案内容，确认后进入宣传阶段。</div>':''}<div class="section-head"><h2>活动方案 <span class="small muted">版本 ${e.revision}</span></h2><div class="actions">${editable?button('修改需求','edit-brief',false,'pencil')+button('确认策划方案','confirm_plan',true,'check'):badge(e.state)}</div></div><div class="prose">${esc(p.summary)}</div>${editable?`<div class="form-actions">${button('编辑方案正文','edit-summary',false,'pencil')}</div>`:''}
+  if (!p || e.state==='WAITING_PLAN_CONFIRMATION') return planDraft();
+  return `<div class="section-head"><h2>活动方案 <span class="small muted">版本 ${e.revision}</span></h2>${badge(e.state)}</div><div class="prose">${esc(p.summary)}</div>
     <div class="columns section"><div><h2>活动流程安排</h2>${timeline(p.timeline)}</div><div><h2>筹备进度安排</h2><ul class="timeline">${p.preparation.map(t=>`<li><time>${t.day}</time><span>${esc(t.task)}</span></li>`).join('')}</ul></div></div>
     <div class="columns section"><div><div class="section-head"><h2>预算分配</h2><span class="small muted">总计 ¥ ${e.brief.budget.toLocaleString()}</span></div><table><thead><tr><th>预算项目</th><th>金额</th></tr></thead><tbody>${p.budget.map(b=>`<tr><td>${esc(b.item)}</td><td>¥ ${b.amount.toLocaleString()}</td></tr>`).join('')}</tbody></table><div class="section"><h2>物资需求</h2><ul class="check-list">${p.materials.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div></div><div><h2>人员分工</h2><ul class="timeline">${p.roles.map(r=>`<li><time>${esc(r.role)}</time><span>${esc(r.task)}</span></li>`).join('')}</ul><div class="section"><h2>风险预案</h2><ul class="check-list">${p.risks.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div></div></div><div class="section"><h2>活动成功指标</h2>${comparison(p.targets)}</div>`;
 }
@@ -202,6 +241,17 @@ async function streamPlanningChat(data) {
     }
     if (!payload) return;
     if (name === 'delta') { gotDelta = true; pendingText += payload.text || ''; appendPending(); }
+    else if (name === 'tool') {
+      pendingText = '';
+      const scroll = $('.chat-scroll');
+      if (scroll) {
+        scroll.querySelector('.chat-row.pending')?.remove();
+        const label = payload.name === 'generate_plan' ? '正在生成活动计划…' : '正在读取活动信息…';
+        scroll.insertAdjacentHTML('beforeend', `<div class="chat-row pending"><div class="chat-bubble tool-status">${icon('loader-circle')}<span>${label}</span></div></div>`);
+        scroll.scrollTop = scroll.scrollHeight;
+        refresh();
+      }
+    }
     else if (name === 'message') {
       if (!gotDelta) { e.planning_messages = [...(e.planning_messages || []), {role: 'assistant', content: payload.reply, questions: payload.questions || [], missing_fields: payload.missing_fields || []}]; render(); }
     } else if (name === 'done') { event = payload; events = events.map(x => x.id === payload.id ? payload : x); finished = true; render(); }
@@ -261,15 +311,13 @@ document.addEventListener('click',ev=>{
   if(action==='back-overview')return openProject(sessionStorage.getItem('campus-event'));
   if(action==='new')return modal(`<h2>新建校园活动</h2><form id="new-form">${field('name','活动名称','text','','required placeholder="为这次相聚起个名字" maxlength="100"')}<div class="form-actions">${button('取消','close',false,'x')}<button type="submit" class="primary">${icon('plus')}创建活动</button></div></form>`);
   if(action==='revise-publicity'||action==='revise-recap')return modal(`<h2>修改${action==='revise-recap'?'活动总结':'宣传内容'}</h2><form id="agent-revise-form" data-kind="${action==='revise-recap'?'regenerate_recap':'publicity'}"><div class="field"><label for="agent-instruction">修改要求</label><textarea id="agent-instruction" name="instruction" required maxlength="6000" placeholder="例如：缩短群聊文案，突出适合零基础同学"></textarea></div><div class="form-actions"><button type="submit" class="primary">生成新草稿</button></div></form>`);
-  if(action==='edit-brief')return modal(`<h2>修改活动需求</h2>${planForm()}`);
-  if(action==='edit-summary')return modal(`<h2>编辑策划方案</h2><form id="summary-form"><div class="field"><textarea name="summary" required rows="10">${esc(event.plan.summary)}</textarea></div><div class="form-actions"><button class="primary" type="submit">保存修改</button></div></form>`);
+  if(action==='edit-brief')return modal(`<h2>填写活动需求</h2>${planForm()}`);
   if(action==='edit-copy'||action==='edit-recap'){const p=action==='edit-copy'?event.publicity:event.recap;return modal(`<h2>编辑宣传文案</h2><form id="copy-form" data-recap="${action==='edit-recap'}"><div class="field"><label>微信公众号</label><textarea name="article" rows="8" required>${esc(p.article)}</textarea></div><div class="spacer"></div><div class="field"><label>微信群 / 朋友圈</label><textarea name="group" rows="5" required>${esc(p.group)}</textarea></div><div class="form-actions"><button class="primary" type="submit">保存文案</button></div></form>`);}
   if(action==='adjust-dialog')return modal(`<h2>提出现场流程调整</h2><form id="adjust-form"><div class="field"><label>调整起点</label><select name="item_id">${event.plan.timeline.map(t=>`<option value="${t.id}">${t.time.slice(11,16)} ${esc(t.title)}</option>`).join('')}</select></div><div class="spacer"></div>${field('minutes','该环节及后续环节顺延（分钟）','number',10,'required min="1" max="180"')}<div class="spacer"></div><div class="field"><label>调整原因</label><textarea name="reason" required placeholder="如：嘉宾预计晚到 20 分钟"></textarea></div><div class="form-actions"><button class="primary" type="submit">提交待确认建议</button></div></form>`);
-  const confirmations={confirm_plan:['确认活动策划','确认后将创建报名入口。请核对额外约束是否已落实，正式策划将保留快照。'],confirm_publicity:['确认宣传并开放报名','本站报名入口将立即开放。外部渠道的文案和海报需手动发布。'],start:['开启现场签到','将关闭新报名并开放参与者签到。'],finish:['结束现场活动','将关闭签到，继续收集参与者的活动后反馈。'],confirm_review:['确认复盘结果','将使用当前复盘数据生成活动总结宣传稿。'],confirm_recap:['确认总结并归档','活动将标记为已归档。总结文案需手动发布到外部渠道。'],approve_adjustment:['确认调整正式时间线','正式执行时间线将更新，并保存本次修改记录。']};
+  const confirmations={confirm_plan:['开始实施','确认后将创建报名入口，进入宣传准备阶段；当前方案将保留快照。'],confirm_publicity:['确认宣传并开放报名','本站报名入口将立即开放。外部渠道的文案和海报需手动发布。'],start:['开启现场签到','将关闭新报名并开放参与者签到。'],finish:['结束现场活动','将关闭签到，继续收集参与者的活动后反馈。'],confirm_review:['确认复盘结果','将使用当前复盘数据生成活动总结宣传稿。'],confirm_recap:['确认总结并归档','活动将标记为已归档。总结文案需手动发布到外部渠道。'],approve_adjustment:['确认调整正式时间线','正式执行时间线将更新，并保存本次修改记录。']};
   if(confirmations[action])return confirmAction(action,...confirmations[action]);
   run(async()=>{
-    if(action==='plan-from-chat')await act('plan_from_brief');
-    else if(action==='refresh'){if(publicId){await loadPublic();}else await loadEvents();toast('数据已更新');}
+    if(action==='refresh'){if(publicId){await loadPublic();}else await loadEvents();toast('数据已更新');}
     else if(action==='copy-link'){await navigator.clipboard.writeText(link());toast('报名链接已复制');}
     else if(action==='copy-content'||action==='copy-recap'){await navigator.clipboard.writeText((action==='copy-recap'?event.recap:event.publicity)[pubTab].replaceAll(event.registration_path,link()));toast('文案已复制');}
     else if(action==='poster'||action==='poster-recap')await poster(action==='poster-recap');
@@ -289,7 +337,6 @@ document.addEventListener('submit',ev=>{
     if(form.id==='planning-chat-form')await streamPlanningChat(data);
     if(form.id==='onsite-agent-form')await act('analyze_onsite',data);
     if(form.id==='agent-revise-form'){await act(form.dataset.kind,data);$('#modal').close();}
-    if(form.id==='summary-form'){await act('edit_plan',data);$('#modal').close();}
     if(form.id==='copy-form'){await act(form.dataset.recap==='true'?'edit_recap':'edit_publicity',data);$('#modal').close();}
     if(form.id==='adjust-form'){await act('adjust',data);$('#modal').close();}
     if(form.id==='answer-form'){await act('answer',{...data,ticket:form.dataset.ticket});$('#modal').close();}

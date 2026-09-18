@@ -296,7 +296,9 @@ def call(role, task, context, fallback, tools=None, audit=None, check=None):
                             except (KeyError, TypeError, ValueError):
                                 raise AgentError('模型请求了未授权工具或无效参数')
                             run['tools'].append(name)
-                            messages.append({'role': 'tool', 'tool_call_id': item['id'], 'content': json.dumps(tools[name]['data'], ensure_ascii=False)})
+                            value = tools[name]
+                            data = value['handler']() if callable(value.get('handler')) else value['data']
+                            messages.append({'role': 'tool', 'tool_call_id': item['id'], 'content': json.dumps(data, ensure_ascii=False)})
                         continue
                     try:
                         result = parse_content(message.get('content'))
@@ -446,7 +448,9 @@ def stream_call(role, task, context, tools=None, check=None, audit=None):
                         raise AgentError('模型请求了未授权工具或无效参数')
                     run['tools'].append(name)
                     yield {'type': 'tool', 'name': name}
-                    messages.append({'role': 'tool', 'tool_call_id': item['id'], 'content': json.dumps(tools[name]['data'], ensure_ascii=False)})
+                    value = tools[name]
+                    data = value['handler']() if callable(value.get('handler')) else value['data']
+                    messages.append({'role': 'tool', 'tool_call_id': item['id'], 'content': json.dumps(data, ensure_ascii=False)})
                 continue
             try:
                 result = parse_content(content)

@@ -73,7 +73,12 @@ class Provider(BaseHTTPRequestHandler):
             self.entered.set()
             self.release.wait(8)
         if not custom and data.get('tools') and not any(m['role'] == 'tool' for m in data['messages']):
-            name = 'delete_everything' if mode == 'forbidden' else data['tools'][0]['function']['name']
+            if mode == 'forbidden':
+                name = 'delete_everything'
+            elif task == 'collect_brief' and '生成' in str(context.get('message', '')) and any(t['function']['name'] == 'generate_plan' for t in data['tools']):
+                name = 'generate_plan'
+            else:
+                name = data['tools'][0]['function']['name']
             return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'read-1', 'type': 'function', 'function': {'name': name, 'arguments': '{}'}}]}}]})
         result = output(task, context)
         if mode == 'invalid' or (mode == 'repair' and len(data.get('messages', [])) < 3):

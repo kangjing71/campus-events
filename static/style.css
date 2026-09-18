@@ -25,13 +25,32 @@
 .chat-row.from-user .chat-bubble{background:#286d51;border-color:#286d51;color:#fff}
 .chat-bubble p{white-space:pre-wrap;overflow-wrap:anywhere}
 .chat-row.from-user .chat-bubble .muted{color:#cfe3d6}
-.chat-welcome{text-align:center;padding:70px 20px 40px;color:#66776d}
-.chat-welcome h2{font-size:22px;color:#2e3d33;margin-bottom:10px}
+.chat-welcome{text-align:center;padding:48px 20px 26px;color:#66776d}
+.chat-welcome h2{font-size:22px;color:#2e3d33;margin-bottom:10px;overflow-wrap:anywhere}
 .chips{display:flex;gap:10px;justify-content:center;margin-top:20px;flex-wrap:wrap}
 .chip{border-radius:18px;padding:8px 16px;background:#fff;font-size:12px;color:#4f6a5a}
+.brief-progress{background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 22px}
+.brief-progress-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.brief-progress-head h3{font-size:13px}
+.brief-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.brief-field{display:flex;flex-direction:column;gap:5px;padding:11px 13px;border:1px solid var(--line);border-radius:9px;min-width:0}
+.brief-label{font-size:11px;color:var(--muted)}
+.brief-value{font-size:12.5px;color:#2e3d33;overflow-wrap:anywhere}
+.brief-field.missing{border-style:dashed;background:#fdfaf3}
+.brief-field.missing .brief-value{color:#a3823f}
 .chat-compose{flex-shrink:0;border:1px solid #dce4de;border-radius:14px;background:#fff;padding:10px 10px 10px 16px;display:flex;gap:10px;align-items:flex-end;box-shadow:0 2px 12px #24483010}
-.chat-compose>form,.chat-compose form{display:flex;gap:10px;align-items:flex-end;flex:1;margin:0}
-.chat-compose textarea{border:0;outline:none;resize:none;overflow:hidden;min-height:44px;max-height:200px;flex:1;padding:10px 0;line-height:1.7;background:transparent;font:inherit}
+.chat-compose>form,.chat-compose form{display:flex;gap:10px;align-items:flex-end;flex:1;min-width:0;margin:0}
+.chat-compose textarea{border:0;outline:none;resize:none;overflow:hidden;min-height:44px;max-height:200px;flex:1;min-width:0;padding:10px 0;line-height:1.7;background:transparent;font:inherit}
 .chat-send{width:44px;height:44px;border-radius:50%;padding:0;flex-shrink:0}
-.chat-compose>.small{flex-shrink:0;padding-bottom:12px}
+.chat-rules-entry{display:flex;align-items:center;justify-content:flex-end;gap:12px}
+.chat-bubble.tool-status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+.plan-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:24px 26px}
+.plan-card-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:18px;padding-top:16px}
+.plan-md h3{font-size:17px;margin:0 0 14px;overflow-wrap:anywhere}
+.plan-md h4{font-size:14px;margin:20px 0 10px;color:#2e3d33}
+.plan-md h5{font-size:13px;margin:14px 0 8px}
+.plan-md p{font-size:13px;line-height:1.9;margin:0 0 10px;overflow-wrap:anywhere}
+.plan-md ul{padding-left:20px;margin:0 0 10px;font-size:13px;line-height:2}
+.plan-md .table-wrap{margin:0 0 10px}
+.plan-md table{white-space:normal}
 .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

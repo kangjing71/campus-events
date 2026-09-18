@@ -57,6 +57,46 @@ def tool(description, data):
     return {'description': description, 'data': data}
 
 
+def action_tool(description, handler):
+    """有副作用的工具：handler 返回可 JSON 序列化的结果，作为工具调用回执给模型。"""
+    return {'description': description, 'data': None, 'handler': handler}
+
+
+def render_plan_md(e):
+    """把结构化策划方案渲染为 Markdown，供对话页展示。"""
+    b, p = e['brief'], e['plan']
+    t = p['targets']
+    lines = [
+        f"# {b['name']} · 活动计划", '',
+        f"- **活动时间**：{str(b.get('date', '')).replace('T', ' ')}（约 {b.get('duration', '?')} 分钟）",
+        f"- **活动地点**：{b.get('location', '')}",
+        f"- **活动类型 / 形式**：{b.get('type', '')} · {b.get('format', '')}",
+        f"- **目标参与者**：{b.get('audience', '')}",
+        f"- **规模与预算**：{b.get('capacity', '')} 人 · ¥{b.get('budget', '')}",
+        f"- **主办方 / 负责人**：{b.get('organizer') or '待定'} / {b.get('owner') or '待定'}",
+        '', '## 活动概述', '', p['summary'], '',
+        '## 活动流程', '',
+        '| 时间 | 环节 | 负责 |', '| --- | --- | --- |',
+        *[f"| {x['time'].replace('T', ' ')[:16]} | {x['title']} | {x['owner']} |" for x in p['timeline']],
+        '', '## 筹备安排', '',
+        *[f"- **{x['day']}**：{x['task']}" for x in p['preparation']],
+        '', '## 人员分工', '',
+        *[f"- **{x['role']}**：{x['task']}" for x in p['roles']],
+        '', '## 预算分配', '',
+        '| 项目 | 金额 |', '| --- | --- |',
+        *[f"| {x['item']} | ¥{x['amount']:g} |" for x in p['budget']],
+        '', '## 物资需求', '',
+        *[f"- {x}" for x in p['materials']],
+        '', '## 风险预案', '',
+        *[f"- {x}" for x in p['risks']],
+        '', '## 成功指标', '',
+        f"- 报名 {t['registration']} 人 · 到场 {t['attendance']} 人（到场率 {t['attendance_rate']}%）· 反馈 {t['feedback']} 份 · 满意度 {t['satisfaction']} 分",
+    ]
+    if b.get('constraints'):
+        lines += ['', '## 额外约束', '', b['constraints']]
+    return '\n'.join(lines)
+
+
 def feedback_evidence(e):
     return [{'id': 'feedback.' + str(i), 'comment': f['comment'], 'rating': f['rating'], 'phase': f['phase']}
             for i, f in list(enumerate(e['feedback_pool']))[-200:]]
@@ -74,8 +114,18 @@ class PlanningAgent:
         full_history = e.get('planning_messages', [])
         history = full_history[-20:]
         context = {'current_time': now(), 'brief': e['brief'], 'history': history, 'message': message, 'required_fields': {k: FIELDS[k] for k in REQUIRED}}
-        fallback = {'brief_patch': {}, 'reply': '策划 Agent 尚未配置模型接口，请在下方表单补充信息；已保留你的需求描述。', 'questions': []}
-        return context, fallback, {'get_event_brief': tool('读取当前活动需求', e['brief'])}
+        fallback = {'brief_patch': {}, 'reply': '策划 Agent 尚未配置模型接口，请通过下方「填写需求表单」补充信息；已保留你的需求描述。', 'questions': []}
+
+        def generate_plan():
+            try:
+                PlanningAgent.generate(e, dict(e['brief']))
+            except Problem as ex:
+                return {'generated': False, 'error': str(ex), 'note': '信息不足或无效，请继续向负责人追问这些信息，收齐后再次调用本工具'}
+            return {'generated': True, 'revision': e['revision'],
+                    'note': '活动计划已生成并展示给负责人，等待负责人在页面确认开始实施；请告知负责人方案已就绪'}
+
+        return context, fallback, {'get_event_brief': tool('读取当前活动需求', e['brief']),
+                                   'generate_plan': action_tool('当活动需求信息（含活动时长）已齐全时，生成活动计划（Markdown）并展示给负责人确认；信息不足时会返回缺少的字段', generate_plan)}
 
     @staticmethod
     def _apply_collect(e, message, result):
@@ -90,6 +140,7 @@ class PlanningAgent:
         if brief != e['brief']:
             if e.get('plan'):
                 e['previous_plan'] = e.pop('plan')
+                e.pop('plan_md', None)
             e['state'] = 'DRAFT'
             e['brief'] = brief
         missing = [FIELDS[key] for key in REQUIRED if brief.get(key) is None or str(brief[key]).strip() == '']
@@ -171,6 +222,7 @@ class PlanningAgent:
         for item in result['timeline']:
             item['id'] = secrets.token_hex(4)
         e['brief'], e['plan'] = base, result
+        e['plan_md'] = render_plan_md(e)
         e['state'] = 'WAITING_PLAN_CONFIRMATION'
         e['revision'] += 1
         log(e, '策划', f"生成第 {e['revision']} 版策划，等待负责人确认")
@@ -387,6 +439,7 @@ class Orchestrator:
             PlanningAgent.generate(e, data)
         elif action == 'edit_plan':
             e['plan']['summary'] = text(data.get('summary'), '方案正文', 30000)
+            e['plan_md'] = render_plan_md(e)
             e['revision'] += 1
             log(e, '策划', '负责人修改方案正文，等待确认')
         elif action == 'confirm_plan':
