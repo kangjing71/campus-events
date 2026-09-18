@@ -30,7 +30,7 @@ class AgentIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.folder = tempfile.TemporaryDirectory()
         self.path = Path(self.folder.name)
-        config = json.loads((s.ROOT / 'agents.json').read_text())
+        config = copy.deepcopy(runtime.DEFAULT_CONFIG)
         config['defaults']['protocol'] = 'chat_completions'
         for role, cfg in config['agents'].items():
             cfg.update(api_url=f'http://127.0.0.1:{self.provider.server_port}/{role}', model='test-'+role,

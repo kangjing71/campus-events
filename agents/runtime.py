@@ -1,4 +1,15 @@
-"""Provider adapters, bounded read-only tool calls, validation and safe telemetry."""
+"""Provider adapters, bounded read-only tool calls, validation and safe telemetry.
+
+模型接入配置（每次调用热加载，修改后无需重启）：
+- 环境变量（.env 或进程环境）：MODEL_URL（OpenAI 兼容 chat_completions 完整端点 URL）、
+  MODEL_NAME、MODEL_API_KEY；也可用 ROLE_API_URL / ROLE_MODEL / ROLE_API_KEY /
+  ROLE_MODE / ROLE_PROTOCOL 按角色覆盖（ROLE 为 PLANNING、PUBLICITY、
+  REGISTRATION、ONSITE、REVIEW），AGENT_ENV_FILE 可指定 .env 路径。
+- 配置文件：默认使用下方 DEFAULT_CONFIG；设置 AGENT_CONFIG 指向自定义 JSON
+  可覆盖（defaults 提供公共值，agents 按角色覆盖，prompt_file 相对于配置文件目录）。
+- 协议：chat_completions（标准 OpenAI 格式，默认）或 json（封装好的 Agent 服务）。
+  mode: auto 时配置了接口走模型，否则用显式规则模式；也可用 mode: model / rules 强制。
+"""
 import hashlib
 import json
 import os
@@ -14,13 +25,27 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .contracts import SCHEMAS, validate
-from .codex_cli import generate, CodexError
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLES = ('planning', 'publicity', 'registration', 'onsite', 'review')
 NAMES = dict(zip(ROLES, ('策划', '宣传', '报名', '现场', '复盘')))
 SLOTS = threading.BoundedSemaphore(3)
 MAX_BYTES = 2_000_000
+
+DEFAULT_CONFIG = {
+    'defaults': {
+        'mode': 'auto', 'protocol': 'chat_completions', 'api_url': '', 'model': '',
+        'temperature': 0.3, 'timeout_seconds': 180, 'retries': 1,
+        'max_tool_rounds': 3, 'tool_calling': True, 'response_format': 'prompt',
+    },
+    'agents': {
+        'planning': {'api_url': '', 'model': '', 'api_key_env': 'PLANNING_API_KEY', 'prompt_file': 'prompts/planning.md'},
+        'publicity': {'api_url': '', 'model': '', 'api_key_env': 'PUBLICITY_API_KEY', 'prompt_file': 'prompts/publicity.md'},
+        'registration': {'api_url': '', 'model': '', 'api_key_env': 'REGISTRATION_API_KEY', 'prompt_file': 'prompts/registration.md'},
+        'onsite': {'api_url': '', 'model': '', 'api_key_env': 'ONSITE_API_KEY', 'prompt_file': 'prompts/onsite.md'},
+        'review': {'api_url': '', 'model': '', 'api_key_env': 'REVIEW_API_KEY', 'prompt_file': 'prompts/review.md'},
+    },
+}
 
 
 class AgentError(Exception):
@@ -56,20 +81,27 @@ def settings(role):
         raise AgentError('未知 Agent 角色')
     try:
         env = environment()
-        path = Path(env.get('AGENT_CONFIG', str(ROOT / 'agents.json')))
-        config = json.loads(path.read_text(encoding='utf-8'))
+        config_path = env.get('AGENT_CONFIG')
+        if config_path:
+            config_base = Path(config_path).parent
+            config = json.loads(Path(config_path).read_text(encoding='utf-8'))
+        else:
+            config_base = ROOT
+            default_file = ROOT / 'agents.json'
+            config = (json.loads(default_file.read_text(encoding='utf-8')) if default_file.is_file()
+                      else DEFAULT_CONFIG)
         cfg = {**config.get('defaults', {}), **config['agents'][role]}
         for name in ('api_url', 'model', 'mode', 'protocol'):
             if env.get(f'{role.upper()}_{name.upper()}'):
                 cfg[name] = env[f'{role.upper()}_{name.upper()}']
-        cfg['api_url'] = cfg.get('api_url') or config.get('defaults', {}).get('api_url') or env.get('MODEL_API_URL', '')
+        cfg['api_url'] = cfg.get('api_url') or config.get('defaults', {}).get('api_url') or env.get('MODEL_URL', '')
         cfg['model'] = cfg.get('model') or config.get('defaults', {}).get('model') or env.get('MODEL_NAME', '')
         key_name = cfg.get('api_key_env', role.upper() + '_API_KEY')
         cfg['api_key'] = env.get(key_name) or env.get('MODEL_API_KEY', '')
         cfg['mode'] = cfg.get('mode', 'auto')
         if cfg['mode'] == 'auto':
-            cfg['mode'] = 'model' if cfg['api_url'] or cfg.get('protocol') == 'codex_exec' else 'rules'
-        if cfg['mode'] not in ('rules', 'model') or cfg.get('protocol') not in ('chat_completions', 'json', 'codex_exec'):
+            cfg['mode'] = 'model' if cfg['api_url'] else 'rules'
+        if cfg['mode'] not in ('rules', 'model') or cfg.get('protocol') not in ('chat_completions', 'json'):
             raise ValueError()
         for name, low, high in [('timeout_seconds', 1, 600), ('retries', 0, 2), ('max_tool_rounds', 1, 6)]:
             if isinstance(cfg[name], bool) or not isinstance(cfg[name], int) or not low <= cfg[name] <= high:
@@ -78,11 +110,11 @@ def settings(role):
             raise ValueError()
         if cfg.get('response_format') not in ('prompt', 'json_object') or not isinstance(cfg.get('tool_calling'), bool):
             raise ValueError()
-        prompt = (path.parent / cfg['prompt_file']).resolve()
+        prompt = (config_base / cfg['prompt_file']).resolve()
         cfg['prompt'] = prompt.read_text(encoding='utf-8').strip()
         if not cfg['prompt'] or len(cfg['prompt']) > 50000:
             raise ValueError()
-        if cfg['mode'] == 'model' and cfg['protocol'] != 'codex_exec':
+        if cfg['mode'] == 'model':
             parsed = urlsplit(cfg['api_url'])
             if parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username or parsed.password:
                 raise ValueError()
@@ -90,7 +122,7 @@ def settings(role):
                 raise AgentError(f'{NAMES[role]} Agent 缺少 model 配置')
         return cfg
     except (OSError, ValueError, KeyError, TypeError):
-        raise AgentError(f'{NAMES[role]} Agent 配置或 prompt 文件无效，请检查 agents.json')
+        raise AgentError(f'{NAMES[role]} Agent 配置或 prompt 文件无效，请检查模型接口配置')
 
 
 def status():
@@ -177,20 +209,7 @@ def call(role, task, context, fallback, tools=None, audit=None, check=None):
             repaired = False
             for turn in range(cfg['max_tool_rounds'] + 2):
                 run['attempts'] += 1
-                if cfg['protocol'] == 'codex_exec':
-                    payload = {'agent': role, 'task': task, 'system_prompt': system, 'context': context,
-                               'tools': {name: value['data'] for name, value in tools.items()}}
-                    if repaired:
-                        payload['validation_error'] = validation_error
-                    try:
-                        content = generate(cfg, payload)
-                    except CodexError as ex:
-                        raise AgentError(str(ex)) from None
-                    try:
-                        result = parse_content(content)
-                    except ValueError:
-                        result = None
-                elif cfg['protocol'] == 'json':
+                if cfg['protocol'] == 'json':
                     payload = {'agent': role, 'task': task, 'system_prompt': system, 'context': context, 'output_schema': schema,
                                'tools': {name: value['data'] for name, value in tools.items()}}
                     if repaired:

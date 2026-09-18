@@ -2,7 +2,7 @@
 
 Python 3.10+、SQLite、原生 HTML/CSS/JavaScript。模型输出使用 `jsonschema` 校验；前端图标和二维码库已打包为本地文件。
 
-**接入五个业务 Agent：阅读 [AGENT_SETUP.md](AGENT_SETUP.md)。** 每个角色拥有独立的接口、模型、密钥、prompt 和只读工具权限；默认 prompt 已提供。
+**接入五个业务 Agent：配置方式见 `.env.example`，说明见 `agents/runtime.py` 模块文档字符串。** 每个角色拥有独立的接口、模型、密钥、prompt 和只读工具权限；默认 prompt 已提供。
 
 ## 启动
 
@@ -54,7 +54,7 @@ DRAFT → WAITING_PLAN_CONFIRMATION → PLAN_CONFIRMED
 
 每个角色可单独运行在规则模式或模型模式。未配置接口时使用明确标识的规则模式；配置后，策划补问和完整方案、两种宣传文案、报名分析和答疑、现场分析和调整建议、复盘分析均通过对应模型生成。模型失败不静默降级。
 
-配置入口为 `.env` / `agents.json`，支持 chat_completions 接口和约定的自定义 JSON Agent 接口。所有模型输出先经 JSON Schema 和业务校验，再进入原有审批流程。详见 [接入指南](AGENT_SETUP.md)。
+配置入口为 `.env`（以及可选的 `AGENT_CONFIG` 自定义配置文件），支持 chat_completions 接口和约定的自定义 JSON Agent 接口。所有模型输出先经 JSON Schema 和业务校验，再进入原有审批流程。配置说明见 `agents/runtime.py` 模块文档字符串。
 
 调用链已使用本地模拟模型验证，尚未使用真实供应商凭据联调。规则模式不会理解任意自然语言约束；真实模型的语义质量也需用实际活动验收。
 
@@ -99,4 +99,4 @@ npm run test:e2e
 - 现场支持顺延选定环节及后续时间；方案正文可编辑，其他结构化修改在确认前通过重新生成完成。
 - 完整复盘评分按参与者去重，活动后有效评分优先；没有评分显示“暂无数据”。
 
-校园图片来自 Unsplash：`https://images.unsplash.com/photo-1523580494863-6f3031224c94`。图标使用 Lucide（ISC），二维码使用 qrcode（MIT）；依赖许可见 `licenses/`。
+校园图片来自 Unsplash：`https://images.unsplash.com/photo-1523580494863-6f3031224c94`。图标使用 Lucide（ISC），二维码使用 qrcode（MIT）；依赖许可说明见 `vendor-entry.js` 头部注释。

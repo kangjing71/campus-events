@@ -16,7 +16,7 @@ async function launch(args, env, match){
 test.beforeAll(async()=>{
   folder=mkdtempSync(join(tmpdir(),'campus-model-e2e-'));
   [provider]=await launch(['tests/mock_provider.py','--port','18768'],process.env,/Mock ready/);
-  const env={...process.env,EVENT_DB:join(folder,'data.db'),AGENT_ENV_FILE:join(folder,'.env'),MODEL_API_URL:''};
+  const env={...process.env,EVENT_DB:join(folder,'data.db'),AGENT_ENV_FILE:join(folder,'.env'),MODEL_URL:''};
   for(const role of ['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW']){
     env[role+'_API_URL']='http://127.0.0.1:18768/'+role.toLowerCase();env[role+'_MODEL']='test-'+role;env[role+'_MODE']='model';env[role+'_API_KEY']='test';env[role+'_PROTOCOL']='chat_completions';
   }

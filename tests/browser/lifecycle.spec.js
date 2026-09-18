@@ -8,7 +8,7 @@ let processHandle, folder, url, adminKey;
 test.beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), 'campus-e2e-'));
   processHandle = spawn('python3', ['server.py', '--port', '18765', '--public-base-url', 'http://localhost:18765'], {
-    cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_API_URL: '', AGENT_ENV_FILE:join(folder,'.env'), ...Object.fromEntries(['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
+    cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_URL: '', AGENT_ENV_FILE:join(folder,'.env'), ...Object.fromEntries(['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stderr = '';
