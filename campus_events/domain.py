@@ -108,6 +108,22 @@ def registration_context(e):
                              for r in e['registrations'][-200:]]}
 
 
+DEFAULT_QUESTIONNAIRE = {
+    'title': '活动报名',
+    'intro': '报名信息仅供活动负责人组织活动使用。',
+    'fields': [
+        {'key': 'name', 'label': '姓名', 'type': 'text', 'required': True, 'placeholder': '', 'options': []},
+        {'key': 'contact', 'label': '联系方式', 'type': 'text', 'required': True, 'placeholder': '手机或微信号', 'options': []},
+        {'key': 'email', 'label': '邮箱', 'type': 'email', 'required': False, 'placeholder': '', 'options': []},
+        {'key': 'college', 'label': '学院', 'type': 'text', 'required': True, 'placeholder': '', 'options': []},
+        {'key': 'grade', 'label': '年级', 'type': 'text', 'required': False, 'placeholder': '如：大二', 'options': []},
+        {'key': 'needs', 'label': '特殊需求', 'type': 'textarea', 'required': False, 'placeholder': '无障碍、饮食或其他参与需求', 'options': []},
+        {'key': 'question', 'label': '想提前了解什么？', 'type': 'textarea', 'required': False, 'placeholder': '向负责人提问', 'options': []},
+        {'key': 'source', 'label': '从哪里了解到活动？', 'type': 'select', 'required': False, 'placeholder': '',
+         'options': ['直接访问', '微信公众号', '微信群', '朋友圈', '校园论坛']},
+    ]}
+
+
 class PlanningAgent:
     @staticmethod
     def _collect_inputs(e, message):
@@ -265,31 +281,70 @@ class RegistrationAgent:
         log(e, '报名', '已生成报名进度分析')
 
     @staticmethod
+    def design(e):
+        """读取策划方案（workspace 中的 plan.md），设计报名问卷。"""
+        fallback = json.loads(json.dumps(DEFAULT_QUESTIONNAIRE))
+        context = {'brief': e['brief'], 'plan_md': e.get('approved_plan_md') or e.get('plan_md') or '',
+                   'plan_file': 'plan.md', 'registration_path': '/join/' + e['id']}
+        def check(output):
+            keys = [f['key'] for f in output['fields']]
+            if len(keys) != len(set(keys)) or any(not re.fullmatch(r'[a-z][a-z0-9_]{0,39}', k) for k in keys):
+                raise ValueError('字段 key 必须唯一，且为小写字母开头的小写字母/数字/下划线')
+            if 'name' not in keys or 'contact' not in keys:
+                raise ValueError('问卷必须包含 name（姓名）和 contact（联系方式）字段')
+            for f in output['fields']:
+                if f['type'] == 'select' and not f['options']:
+                    raise ValueError('select 类型字段必须提供选项')
+        ws_tools = workspace.workspace_tools(e['id'])
+        result = invoke(e, 'registration', 'design_questionnaire', context, fallback,
+                        {'read_file': ws_tools['read_file'], 'list_files': ws_tools['list_files']}, check)
+        e['questionnaire'] = result
+        log(e, '报名', f"已根据策划方案设计报名问卷（{len(result['fields'])} 个字段）")
+
+    @staticmethod
     def create(e):
         e['registration_path'] = '/join/' + e['id']
-        log(e, '报名', '已创建报名表与参与者入口，宣传确认后开放报名')
+        RegistrationAgent.design(e)
+        log(e, '报名', '已创建报名问卷与参与者入口，报名已开放')
 
     @staticmethod
     def register(e, data):
         if e['state'] != 'REGISTRATION_OPEN':
             raise Problem('当前不在报名阶段')
-        if len(e['registrations']) >= e['brief']['capacity']:
+        cap = e['brief'].get('capacity')
+        if cap and len(e['registrations']) >= cap:
             raise Problem('报名名额已满')
-        email = text(data.get('email'), '邮箱', 254).lower()
-        if not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', email):
-            raise Problem('邮箱格式不正确')
-        if any(r['email'] == email for r in e['registrations']):
-            raise Problem('该邮箱已报名，请勿重复提交')
-        r = {'id': secrets.token_urlsafe(12), 'name': text(data.get('name'), '姓名', 80), 'email': email,
-             'college': text(data.get('college'), '学院', 100), 'grade': str(data.get('grade', ''))[:40],
-             'needs': str(data.get('needs', ''))[:1000], 'question': str(data.get('question', ''))[:1000],
-             'source': str(data.get('source', '直接访问'))[:100], 'at': now(), 'checked_at': None, 'late': False}
+        q = e.get('questionnaire') or DEFAULT_QUESTIONNAIRE
+        raw = data.get('answers') if isinstance(data.get('answers'), dict) else data
+        answers = {}
+        for f in q['fields']:
+            value = str(raw.get(f['key']) or '').strip()[:1000]
+            if f.get('required') and not value:
+                raise Problem(f"请填写{f['label']}")
+            if value and f['type'] == 'email' and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+', value.lower()):
+                raise Problem('邮箱格式不正确')
+            if value and f['type'] == 'select' and value not in f.get('options', []):
+                raise Problem(f"{f['label']}的选项无效")
+            answers[f['key']] = value
+        name = text(answers.get('name'), '姓名', 80)
+        contact = answers.get('contact') or answers.get('email') or ''
+        if not contact:
+            raise Problem('请填写联系方式')
+        if any((r.get('contact') or r.get('email') or '').lower() == contact.lower() for r in e['registrations']):
+            raise Problem('该联系方式已报名，请勿重复提交')
+        r = {'id': secrets.token_urlsafe(12), 'name': name, 'contact': contact,
+             'college': answers.get('college', ''), 'grade': answers.get('grade', ''),
+             'needs': answers.get('needs', ''), 'question': answers.get('question', ''),
+             'source': answers.get('source', '直接访问'), 'email': answers.get('email', ''),
+             'answers': answers, 'at': now(), 'checked_at': None, 'late': False}
         e['registrations'].append(r)
         log(e, '报名', '新增报名，当前共 ' + str(len(e['registrations'])) + ' 人')
         return {'ticket': r['id'], 'name': r['name']}
 
 
 class PublicityAgent:
+    STYLES = (('moments', 'publicity_moments', '朋友圈'), ('article', 'publicity_article', '公众号'), ('xiaohongshu', 'publicity_xiaohongshu', '小红书'))
+
     @staticmethod
     def generate(e, recap=False, instruction=''):
         b = e['brief']
@@ -297,41 +352,62 @@ class PublicityAgent:
             s = metrics(e)
             core = f"{b['name']}已结束，共 {s['registration']} 人报名，{s['attendance']} 人到场，收到 {s['feedback']} 份反馈。" + (f"平均满意度 {s['satisfaction']} / 5。" if s['satisfaction'] is not None else '满意度暂缺有效评分。')
         else:
-            core = f"{b['name']}\n面向{b['audience']}，一起探索：{b.get('objective') or b['name']}。\n时间：{b['date'].replace('T', ' ')}\n地点：{b['location']}\n主办方：{b.get('organizer') or '待定'}\n报名入口：{e['registration_path']}"
-        fallback = {'article': core + '\n\n' + ('感谢每一位参与者的投入，期待下一次相聚。' if recap else '欢迎带着问题和好奇心前来，与同学们一起交流。'),
-                  'group': core + ('\n感谢参与，期待再见！' if recap else '\n欢迎报名参加！'),
-                  'schedule': ['T-7 首轮招募', 'T-3 活动亮点与报名进度', 'T-1 活动提醒'] if not recap else ['复盘确认后发布活动总结']}
-        context = {'brief': b, 'plan': e.get('approved_plan') or e.get('plan') or e.get('approved_plan_md') or e.get('plan_md'), 'registration_path': e['registration_path'],
-                   'review': e.get('review') if recap else None, 'metrics': metrics(e), 'instruction': str(instruction)[:6000],
-                   'current_copy': e.get('recap' if recap else 'publicity')}
-        def check(output):
-            if not recap and any(e['registration_path'] not in output[k] for k in ('article', 'group')):
-                raise ValueError('两个宣传版本都必须保留真实报名路径')
-        result = invoke(e, 'publicity', 'generate_recap' if recap else 'generate_publicity', context, fallback,
-                        {'get_confirmed_plan': tool('读取已确认策划', context['plan']), 'get_review_data': tool('读取活动复盘及真实统计', {'review': context['review'], 'metrics': context['metrics']})}, check)
+            core = f"{b['name']}\n面向{b.get('audience', '全体同学')}，一起探索：{b.get('objective') or b['name']}。\n时间：{b.get('date', '待定').replace('T', ' ')}\n地点：{b.get('location', '待定')}\n主办方：{b.get('organizer') or '待定'}\n报名入口：{e['registration_path']}"
+        base_context = {'brief': b, 'plan': e.get('approved_plan') or e.get('plan') or e.get('approved_plan_md') or e.get('plan_md'),
+                        'questionnaire': e.get('questionnaire'), 'registration_path': e['registration_path'],
+                        'review': e.get('review') if recap else None, 'metrics': metrics(e), 'instruction': str(instruction)[:6000],
+                        'current_copy': e.get('recap' if recap else 'publicity'), 'recap': recap}
+        fallback_copy = core + ('\n感谢参与，期待再见！' if recap else '\n欢迎报名参加！')
+        result = {}
+        for key, role, label in PublicityAgent.STYLES:
+            try:
+                skill = (store.ROOT / 'skills' / f'copy_{key}.md').read_text(encoding='utf-8')
+            except OSError:
+                skill = ''
+            context = {**base_context, 'style': key, 'style_name': label, 'skill': skill}
+            def check(output):
+                if not recap and e['registration_path'] not in output['copy']:
+                    raise ValueError('文案必须保留真实报名路径')
+            try:
+                out = invoke(e, role, 'generate_copy', context, {'copy': fallback_copy},
+                             {'get_confirmed_plan': tool('读取已确认策划', context['plan']), 'get_questionnaire': tool('读取报名问卷设计', context['questionnaire']),
+                              'get_review_data': tool('读取活动复盘及真实统计', {'review': context['review'], 'metrics': context['metrics']})}, check)
+                result[key] = out['copy']
+            except Problem:
+                result[key] = fallback_copy
+                log(e, '宣传', f'{label}文案生成失败，已使用兜底文案')
+        result['schedule'] = ['T-7 首轮招募', 'T-3 活动亮点与报名进度', 'T-1 活动提醒'] if not recap else ['复盘确认后发布活动总结']
         result['approved'] = False
         e['recap' if recap else 'publicity'] = result
-        e['state'] = 'WAITING_RECAP_CONFIRMATION' if recap else 'WAITING_PUBLICITY_CONFIRMATION'
+        if recap:
+            e['state'] = 'WAITING_RECAP_CONFIRMATION'
+        elif e['state'] == 'PLAN_CONFIRMED':
+            e['state'] = 'WAITING_PUBLICITY_CONFIRMATION'
         log(e, '宣传', ('活动总结' if recap else '宣传稿与发布节奏') + '已生成，等待负责人确认')
 
 
 class OnsiteAgent:
     @staticmethod
     def analyze(e, data):
-        if not e.get('plan'):
-            raise Problem('当前活动没有结构化执行时间线，现场分析暂不可用')
+        if not e.get('plan') and not e.get('plan_md'):
+            raise Problem('当前活动还没有策划方案，现场分析暂不可用')
         if e.get('pending_adjustment'):
             raise Problem('请先处理当前待确认调整，再进行现场分析')
         evidence = feedback_evidence(e)
-        context = {'current_time': now(), 'brief': e['brief'], 'timeline': e['plan']['timeline'], 'metrics': metrics(e),
+        timeline = (e.get('plan') or {}).get('timeline')
+        context = {'current_time': now(), 'brief': e['brief'], 'plan_md': e.get('approved_plan_md') or e.get('plan_md') or '',
+                   'timeline': timeline, 'metrics': metrics(e),
                    'feedback': evidence, 'staff_note': str(data.get('message', ''))[:6000], 'sample_limit': 200}
         fallback = {'summary': '未配置现场模型。请核对签到、反馈及当前时间线。', 'issues': [], 'adjustment': None}
         def check(output):
             ids = {f['id'] for f in evidence}
             if any(ref not in ids for issue in output['issues'] for ref in issue['evidence_ids']):
                 raise ValueError('现场分析引用了不存在的反馈')
-            if output['adjustment'] and output['adjustment']['item_id'] not in {t['id'] for t in e['plan']['timeline']}:
-                raise ValueError('现场建议引用了不存在的时间线环节')
+            if output['adjustment']:
+                if not timeline:
+                    raise ValueError('当前没有结构化执行时间线，adjustment 必须为 null')
+                if output['adjustment']['item_id'] not in {t['id'] for t in timeline}:
+                    raise ValueError('现场建议引用了不存在的时间线环节')
         result = invoke(e, 'onsite', 'analyze_onsite', context, fallback,
                         {'get_live_status': tool('读取现场时间线和统计', context), 'get_live_feedback': tool('读取去标识反馈', evidence)}, check)
         e['onsite_analysis'] = result
@@ -386,22 +462,25 @@ def metrics(e):
 class ReviewAgent:
     @staticmethod
     def generate(e):
-        if not e.get('plan'):
-            raise Problem('当前活动没有结构化目标数据，复盘生成暂不可用')
+        if not e.get('plan') and not e.get('plan_md'):
+            raise Problem('当前活动还没有策划方案，复盘生成暂不可用')
         s = metrics(e)
-        targets = e['plan']['targets']
+        plan = e.get('plan') or {}
+        targets = plan.get('targets') or {}
         comparison = [{'key': key, 'target': target, 'actual': s[key], 'met': s[key] >= target if s[key] is not None else None} for key, target in targets.items()]
         suggestions = []
-        if s['registration'] < targets['registration']:
-            suggestions.append('报名未达目标：下次在 T-3 检查各渠道转化，并由负责人确认补充宣传。')
-        if s['attendance_rate'] is not None and s['attendance_rate'] < 80:
-            suggestions.append('到场率低于目标：下次在 T-1 核实参加意向，并在开始前一小时发送提醒。')
-        if s['feedback'] < targets['feedback']:
-            suggestions.append('反馈样本不足：下次将反馈入口放在结束页，并在离场前预留两分钟填写。')
+        if targets:
+            if s['registration'] < targets['registration']:
+                suggestions.append('报名未达目标：下次在 T-3 检查各渠道转化，并由负责人确认补充宣传。')
+            if s['attendance_rate'] is not None and s['attendance_rate'] < 80:
+                suggestions.append('到场率低于目标：下次在 T-1 核实参加意向，并在开始前一小时发送提醒。')
+            if s['feedback'] < targets['feedback']:
+                suggestions.append('反馈样本不足：下次将反馈入口放在结束页，并在离场前预留两分钟填写。')
         if not suggestions:
             suggestions.append('保留本次筹备节奏；下次逐项核对参与者意见，并明确改进责任人。')
         evidence = feedback_evidence(e) + [{'id': 'metrics.' + key, 'value': value} for key, value in s.items()] + [{'id': 'adjustment.' + str(i), **a} for i, a in enumerate(e['adjustments'])]
-        context = {'brief': e['brief'], 'original_plan': e.get('approved_plan'), 'executed_timeline': e['plan']['timeline'],
+        context = {'brief': e['brief'], 'plan_md': e.get('approved_plan_md') or e.get('plan_md') or '',
+                   'original_plan': e.get('approved_plan'), 'executed_timeline': plan.get('timeline'),
                    'publicity': e.get('publicity'), 'metrics': s, 'targets': targets, 'comparison': comparison, 'evidence': evidence, 'feedback_sample_limit': 200}
         fallback = {'summary': f"本次活动共 {s['registration']} 人报名、{s['attendance']} 人到场，收到 {s['feedback']} 位参与者的反馈。评分样本 {s['rating_count']} 份。", 'suggestions': suggestions, 'findings': []}
         def check(output):
@@ -425,8 +504,8 @@ class Orchestrator:
         'analyze_onsite': ['LIVE'],
         'regenerate_recap': ['WAITING_RECAP_CONFIRMATION'],
         'plan': ['DRAFT', 'WAITING_PLAN_CONFIRMATION'], 'edit_plan': ['WAITING_PLAN_CONFIRMATION'], 'confirm_plan': ['WAITING_PLAN_CONFIRMATION'],
-        'publicity': ['PLAN_CONFIRMED', 'WAITING_PUBLICITY_CONFIRMATION'], 'edit_publicity': ['WAITING_PUBLICITY_CONFIRMATION'],
-        'confirm_publicity': ['WAITING_PUBLICITY_CONFIRMATION'], 'start': ['REGISTRATION_OPEN'],
+        'publicity': ['PLAN_CONFIRMED', 'WAITING_PUBLICITY_CONFIRMATION', 'REGISTRATION_OPEN'], 'edit_publicity': ['WAITING_PUBLICITY_CONFIRMATION', 'REGISTRATION_OPEN'],
+        'confirm_publicity': ['WAITING_PUBLICITY_CONFIRMATION', 'REGISTRATION_OPEN'], 'start': ['REGISTRATION_OPEN'],
         'checkin': ['LIVE'], 'adjust': ['LIVE'], 'approve_adjustment': ['LIVE'], 'reject_adjustment': ['LIVE'],
         'finish': ['LIVE'], 'review': ['FEEDBACK', 'WAITING_REVIEW_CONFIRMATION'],
         'confirm_review': ['WAITING_REVIEW_CONFIRMATION'], 'edit_recap': ['WAITING_RECAP_CONFIRMATION'],
@@ -458,18 +537,25 @@ class Orchestrator:
         elif action == 'confirm_plan':
             if not e.get('plan_md'):
                 raise Problem('还没有可实施的策划方案')
-            e['state'] = 'PLAN_CONFIRMED'
+            e['state'] = 'REGISTRATION_OPEN'
             e['approved_plan_md'] = e['plan_md']
             if e.get('plan'):
                 e['approved_plan'] = json.loads(json.dumps(e['plan']))
-            log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版，开始实施')
+            log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版，开始实施，报名开放')
             RegistrationAgent.create(e)
+            try:
+                PublicityAgent.generate(e)
+                e['publicity']['approved'] = True
+                log(e, '宣传', '宣传文案已自动生成并生效，可复制到外部渠道发布')
+            except Problem as ex:
+                log(e, '宣传', '宣传文案生成失败：' + str(ex))
         elif action == 'publicity':
             PublicityAgent.generate(e, instruction=data.get('instruction', ''))
         elif action in ('edit_publicity', 'edit_recap'):
             key = 'recap' if action == 'edit_recap' else 'publicity'
-            for field in ('article', 'group'):
-                e[key][field] = text(data.get(field), '文案', 30000)
+            for field in ('moments', 'article', 'xiaohongshu'):
+                if data.get(field) is not None:
+                    e[key][field] = text(data.get(field), '文案', 30000)
             log(e, '宣传', '负责人更新待确认文案')
         elif action == 'confirm_publicity':
             e['publicity']['approved'] = True
@@ -537,7 +623,9 @@ def new_event(name='未命名活动'):
 
 
 def public_event(e):
+    capacity = e['brief'].get('capacity')
     return {'id': e['id'], 'state': e['state'], 'brief': {k: e['brief'].get(k) for k in ['name', 'objective', 'date', 'location', 'audience', 'capacity', 'organizer']},
-            'remaining': max(0, e['brief'].get('capacity', 0) - len(e['registrations'])),
+            'remaining': max(0, capacity - len(e['registrations'])) if capacity else None,
+            'questionnaire': e.get('questionnaire'),
             'publicity': e.get('publicity', {}).get('article') if e.get('publicity', {}).get('approved') else None}
 

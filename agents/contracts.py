@@ -36,14 +36,18 @@ PLAN = obj({
 SCHEMAS = {
     'collect_brief': obj({'brief_patch': obj(BRIEF_FIELDS, []), 'reply': string(5000), 'questions': array(string(1000), 0, 15)}),
     'generate_plan': PLAN,
-    'generate_publicity': obj({'article': string(30000), 'group': string(10000), 'schedule': array(string(1000), 1, 20)}),
-    'generate_recap': obj({'article': string(30000), 'group': string(10000), 'schedule': array(string(1000), 1, 20)}),
+    'generate_copy': obj({'copy': string(30000)}),
     'answer_question': obj({'answer': string(5000, empty=True), 'needs_human': {'type': 'boolean'}, 'reason': string(2000), 'evidence': array(string(1000), 0, 20)}),
     'analyze_registration': obj({'summary': string(10000), 'suggestions': array(string(2000), 1, 20), 'needs_attention': array(string(1000), 0, 30)}),
     'analyze_onsite': obj({'summary': string(10000), 'issues': array(obj({'topic': string(300), 'evidence_ids': array(string(100), 0, 100), 'suggestion': string(2000)}), 0, 30),
                            'adjustment': {'anyOf': [{'type': 'null'}, obj({'item_id': string(100), 'minutes': numeric(1, 180, True), 'reason': string(1000)})]}}),
     'generate_review': obj({'summary': string(30000), 'suggestions': array(string(3000), 1, 30),
                             'findings': array(obj({'observation': string(3000), 'evidence_ids': array(string(100), 1, 100), 'hypothesis': string(3000, empty=True)}), 0, 30)}),
+    'design_questionnaire': obj({'title': string(200), 'intro': string(1000, empty=True),
+                                 'fields': array(obj({'key': string(40), 'label': string(100),
+                                                      'type': {'enum': ['text', 'email', 'tel', 'number', 'textarea', 'select']},
+                                                      'required': {'type': 'boolean'}, 'placeholder': string(200, empty=True),
+                                                      'options': array(string(100), 0, 20)}, ['key', 'label', 'type', 'required', 'placeholder', 'options']), 2, 20)}),
     'connection_test': obj({'ok': {'const': True}}),
 }
 

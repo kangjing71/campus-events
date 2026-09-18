@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   processHandle = spawn(PYTHON, ['server.py', '--port', '18765', '--public-base-url', 'http://localhost:18765'], {
     cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_URL: '', AGENT_ENV_FILE:join(folder,'.env'),
       PLANNING_API_URL: 'http://127.0.0.1:18769/planning', PLANNING_MODEL: 'test-planning', PLANNING_MODE: 'model', PLANNING_API_KEY: 'test', PLANNING_PROTOCOL: 'chat_completions',
-      ...Object.fromEntries(['PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
+      ...Object.fromEntries(['PUBLICITY_MOMENTS','PUBLICITY_ARTICLE','PUBLICITY_XIAOHONGSHU','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stderr = '';
@@ -59,8 +59,8 @@ test('complete organizer and participant lifecycle', async ({ page, browser, req
   await expect(page.locator('.plan-preview')).toContainText('模型策划：加入跨学院讨论，按时结束。');
   await page.getByRole('button',{name:'开始实施'}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
+  // 实施后：问卷已生成、报名已开放、宣传文案已自动生成
   await page.getByRole('button',{name:'宣传中心'}).click();
-  await page.getByRole('button',{name:'生成宣传内容'}).click();
   await expect(page.locator('#qr')).toBeVisible();
   await expect.poll(()=>page.locator('#qr').evaluate(c=>{const p=c.getContext('2d').getImageData(0,0,c.width,c.height).data;return p.some((v,i)=>i%4===0&&v<100);})).toBe(true);
   const downloadPromise = page.waitForEvent('download');
@@ -68,8 +68,6 @@ test('complete organizer and participant lifecycle', async ({ page, browser, req
   const poster = await downloadPromise;
   expect(poster.suggestedFilename()).toBe('活动海报.png');
   await poster.saveAs('test-results/poster.png');
-  await page.getByRole('button',{name:'确认宣传并开放报名'}).click();
-  await page.getByRole('button',{name:'确认执行'}).click();
   await page.getByRole('button',{name:'报名管理'}).click();
   const joinUrl=await page.locator('.link-box a').getAttribute('href');
   expect(joinUrl).toMatch(/^http:\/\/localhost:18765\/join\//);
@@ -89,7 +87,8 @@ test('complete organizer and participant lifecycle', async ({ page, browser, req
   const participant=await context.newPage();participant.on('pageerror',e=>errors.push(e.message));
   await participant.goto(joinUrl);
   await participant.getByLabel('姓名 *').fill('李同学');
-  await participant.getByLabel('邮箱 *').fill('student@example.com');
+  await participant.getByLabel('联系方式 *').fill('13800000000');
+  await participant.getByLabel('邮箱').fill('student@example.com');
   await participant.getByLabel('学院 *').fill('计算机学院');
   await participant.locator('[name=question]').fill('需要带电脑吗？');
   await participant.screenshot({path:'test-results/registration.png',fullPage:true});
@@ -109,44 +108,37 @@ test('complete organizer and participant lifecycle', async ({ page, browser, req
   await page.screenshot({path:'test-results/overview.png',fullPage:true});
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.getByRole('button',{name:'现场执行'}).click();
-  await page.getByRole('button',{name:'开启现场签到',exact:true}).click();
+  await page.getByRole('button',{name:'开始活动',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await participant.reload();
   await expect(participant.getByText('不需要，欢迎轻装参加。')).toBeVisible();
   await participant.getByRole('button',{name:'确认现场签到'}).click();
   await expect(participant.locator('.ticket .badge')).toContainText('已签到');
-  await participant.getByRole('button',{name:'参与反馈'}).click();
-  await participant.locator('[name=rating]').selectOption('4');
+  await participant.getByRole('button',{name:'现场问题'}).click();
   await participant.locator('[name=comment]').fill('希望多留一点讨论时间。');
-  await participant.getByRole('button',{name:'提交反馈'}).click();
-  await expect(participant.locator('#toast')).toContainText('反馈已保存');
+  await participant.getByRole('button',{name:'提交',exact:true}).click();
+  await expect(participant.locator('#toast')).toContainText('问题已提交');
   await page.getByRole('button',{name:'刷新活动数据'}).click();
-  // TODO: 下游（现场分析/流程调整）依赖结构化方案，对接完成后恢复
-  // await page.getByRole('button',{name:'提出调整'}).click();
-  // await page.locator('[name=reason]').fill('增加讨论时间');
-  // await page.getByRole('button',{name:'提交待确认建议'}).click();
-  // await page.getByRole('button',{name:'采纳调整'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  await page.getByRole('button',{name:'结束活动，收集反馈'}).click();
+  // 注：流程顺延调整仅对有结构化时间线的旧活动可用，md 方案活动不提供
+  await page.getByRole('button',{name:'结束活动',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await participant.reload();
-  await participant.getByRole('button',{name:'参与反馈'}).click();
+  await participant.getByRole('button',{name:'复盘反馈'}).click();
   await participant.locator('[name=rating]').selectOption('5');
   await participant.locator('[name=comment]').fill('增加讨论后收获很大。');
   await participant.getByRole('button',{name:'提交反馈'}).click();
   await expect(participant.locator('#toast')).toContainText('反馈已保存');
   await page.getByRole('button',{name:'刷新活动数据'}).click();
-  // TODO: 复盘依赖结构化方案目标数据，下游对接完成后恢复
-  // await page.getByRole('button',{name:'活动复盘'}).click();
-  // await page.getByRole('button',{name:'生成活动复盘'}).click();
-  // await expect(page.getByText('评分样本 1 份',{exact:true})).toBeVisible();
-  // await page.getByRole('button',{name:'确认复盘，生成总结'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  // await page.getByRole('button',{name:'确认总结并归档'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  // await expect(page.locator('#toast')).toContainText('已归档');
-  // await page.reload();
-  // await expect(page.getByText('本次活动已归档')).toBeVisible();
+  await page.getByRole('button',{name:'活动复盘'}).click();
+  await page.getByRole('button',{name:'生成活动复盘'}).click();
+  await expect(page.getByText('评分样本 1 份',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'确认复盘，生成总结'}).click();
+  await page.getByRole('button',{name:'确认执行'}).click();
+  await page.getByRole('button',{name:'确认总结并归档'}).click();
+  await page.getByRole('button',{name:'确认执行'}).click();
+  await expect(page.locator('#toast')).toContainText('已归档');
+  await page.reload();
+  await expect(page.getByText('本次活动已归档')).toBeVisible();
   await page.getByRole('button',{name:'活动复盘'}).click();
   await page.screenshot({path:'test-results/report.png',fullPage:true});
   expect(errors).toEqual([]);

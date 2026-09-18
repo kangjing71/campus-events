@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import server as s
+from agents import runtime
 
 
 BRIEF = {'name': '测试活动', 'objective': '交流学习', 'type': '分享', 'level': '校级', 'format': '线下',
@@ -17,7 +18,10 @@ BRIEF = {'name': '测试活动', 'objective': '交流学习', 'type': '分享', 
 
 class WorkflowTests(unittest.TestCase):
     def setUp(self):
-        self.env = patch.dict(os.environ, {role+'_MODE': 'rules' for role in ['PLANNING', 'PUBLICITY', 'REGISTRATION', 'ONSITE', 'REVIEW']})
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+        self.env = patch.dict(os.environ, {**{r.upper()+'_MODE': 'rules' for r in runtime.ROLES},
+                                           'AGENT_ENV_FILE': str(Path(self.folder.name) / '.env')})
         self.env.start()
         self.addCleanup(self.env.stop)
         self.e = s.new_event('测试活动')
@@ -29,7 +33,7 @@ class WorkflowTests(unittest.TestCase):
         s.Orchestrator.act(self.e, 'confirm_publicity', {})
 
     def register(self, email='student@example.com'):
-        return s.RegistrationAgent.register(self.e, {'name': '同学', 'email': email, 'college': '信息学院'})['ticket']
+        return s.RegistrationAgent.register(self.e, {'name': '同学', 'email': email, 'contact': email, 'college': '信息学院'})['ticket']
 
     def test_confirmation_gates(self):
         for action in ['confirm_plan', 'publicity', 'confirm_publicity', 'start', 'review', 'confirm_recap']:

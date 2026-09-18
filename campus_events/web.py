@@ -57,9 +57,17 @@ class Handler(BaseHTTPRequestHandler):
                     if match[2]:
                         stream = io.StringIO()
                         writer = csv.writer(stream)
-                        writer.writerow(['姓名', '邮箱', '学院', '年级', '需求', '报名时间', '签到时间'])
-                        for r in e['registrations']:
-                            vals = [str(r.get(k) or '') for k in ['name', 'email', 'college', 'grade', 'needs', 'at', 'checked_at']]
+                        q = e.get('questionnaire')
+                        if q:
+                            keys = [f['key'] for f in q['fields']]
+                            writer.writerow([f['label'] for f in q['fields']] + ['报名时间', '签到时间'])
+                            rows = [[r.get('answers', {}).get(k, '') for k in keys] + [r['at'], r.get('checked_at') or ''] for r in e['registrations']]
+                        else:
+                            keys = ['name', 'email', 'college', 'grade', 'needs']
+                            writer.writerow(['姓名', '邮箱', '学院', '年级', '需求', '报名时间', '签到时间'])
+                            rows = [[r.get(k) or '' for k in keys] + [r['at'], r.get('checked_at') or ''] for r in e['registrations']]
+                        for vals in rows:
+                            vals = [str(v) for v in vals]
                             writer.writerow(["'" + v if v.lstrip().startswith(('=', '+', '-', '@')) else v for v in vals])
                         return self.send(200, '\ufeff' + stream.getvalue(), 'text/csv; charset=utf-8')
                     return self.send(200, dict(e, metrics=metrics(e)))

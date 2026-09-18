@@ -28,18 +28,30 @@ def output(task, context):
                 'preparation': [{'day': 'T-7', 'task': '确认场地并宣传'}], 'roles': [{'role': '负责人', 'task': '协调现场'}],
                 'budget': [{'item': '物资', 'amount': b['budget']}], 'materials': ['话筒'], 'risks': ['提前测试设备'],
                 'targets': {'registration': b['capacity'], 'attendance': max(1, round(b['capacity']*.8)), 'feedback': max(1, round(b['capacity']*.5)), 'attendance_rate': 80, 'satisfaction': 4}}
-    if task in ('generate_publicity', 'generate_recap'):
+    if task == 'generate_copy':
         b = context['brief']
         core = b['name']+' '+b['date']+' '+b['location']+' '+context['registration_path']
-        return {'article': '模型公众号草稿：'+core, 'group': '模型群聊草稿：'+core, 'schedule': ['负责人确认后手动发布']}
+        prefix = {'moments': '模型朋友圈草稿：', 'article': '模型公众号草稿：', 'xiaohongshu': '模型小红书草稿：'}.get(context.get('style'), '模型宣传草稿：')
+        return {'copy': prefix + core}
+    if task == 'design_questionnaire':
+        return {'title': '活动报名问卷', 'intro': '报名信息仅供活动负责人组织活动使用。',
+                'fields': [
+                    {'key': 'name', 'label': '姓名', 'type': 'text', 'required': True, 'placeholder': '', 'options': []},
+                    {'key': 'contact', 'label': '联系方式', 'type': 'text', 'required': True, 'placeholder': '手机或微信号', 'options': []},
+                    {'key': 'email', 'label': '邮箱', 'type': 'email', 'required': False, 'placeholder': '', 'options': []},
+                    {'key': 'college', 'label': '学院', 'type': 'text', 'required': True, 'placeholder': '', 'options': []},
+                    {'key': 'question', 'label': '想提前了解什么？', 'type': 'textarea', 'required': False, 'placeholder': '', 'options': []},
+                    {'key': 'source', 'label': '从哪里了解到活动？', 'type': 'select', 'required': False, 'placeholder': '',
+                     'options': ['直接访问', '微信群', '朋友圈']}]}
     if task == 'answer_question':
         return {'answer': '活动地点：'+context['facts']['location'], 'needs_human': False, 'reason': '活动地点已有明确记录', 'evidence': [context['facts']['location']]}
     if task == 'analyze_registration':
         return {'summary': f"模型分析：已报名 {context['metrics']['registration']} 人。", 'suggestions': ['负责人在 T-3 核对报名进度。'], 'needs_attention': ['核对未答复问题']}
     if task == 'analyze_onsite':
+        timeline = context.get('timeline')
         return {'summary': '模型现场分析：建议顺延分享环节。',
                 'issues': [{'topic': '互动时间', 'evidence_ids': [context['feedback'][0]['id']], 'suggestion': '延长讨论'}] if context['feedback'] else [],
-                'adjustment': {'item_id': context['timeline'][1]['id'], 'minutes': 10, 'reason': '工作人员提出嘉宾晚到'}}
+                'adjustment': {'item_id': timeline[1]['id'], 'minutes': 10, 'reason': '工作人员提出嘉宾晚到'} if timeline and len(timeline) > 1 else None}
     if task == 'generate_review':
         return {'summary': '模型复盘：以实际报名和签到数据评估活动。', 'suggestions': ['下次由现场组提前 30 分钟开放签到。'],
                 'findings': [{'observation': f"实际报名 {context['metrics']['registration']} 人。", 'evidence_ids': ['metrics.registration'], 'hypothesis': '宣传覆盖可能不足，需进一步核实。'}]}
@@ -88,7 +100,8 @@ class Provider(BaseHTTPRequestHandler):
                 elif tool_rounds == 1:
                     name, arguments = 'write_file', json.dumps({'path': 'plan.md', 'content': PLAN_MD}, ensure_ascii=False)
             elif tool_rounds == 0:
-                name, arguments = names[0], '{}'
+                name = names[0]
+                arguments = json.dumps({'path': 'plan.md'}) if name == 'read_file' else '{}'
             if name:
                 return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 'call-' + str(tool_rounds), 'type': 'function', 'function': {'name': name, 'arguments': arguments}}]}}]})
         result = output(task, context)

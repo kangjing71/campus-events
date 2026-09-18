@@ -69,7 +69,7 @@ class AgentIntegrationTests(unittest.TestCase):
         s.Orchestrator.act(self.e, 'confirm_publicity', {})
 
     def register(self):
-        return s.RegistrationAgent.register(self.e, {'name': 'PRIVATE_NAME', 'email': 'private@example.com', 'college': '学院', 'question': '活动在哪里？'})['ticket']
+        return s.RegistrationAgent.register(self.e, {'name': 'PRIVATE_NAME', 'email': 'private@example.com', 'contact': 'private@example.com', 'college': '学院', 'question': '活动在哪里？'})['ticket']
 
     def test_all_five_roles_routed_with_distinct_credentials_and_tools(self):
         s.Orchestrator.act(self.e, 'planning_chat', {'message': '先讨论目标'})
@@ -80,7 +80,7 @@ class AgentIntegrationTests(unittest.TestCase):
         self.assertIn('模型策划', self.e['plan']['summary'])
         s.Orchestrator.act(self.e, 'confirm_plan', {})
         s.Orchestrator.act(self.e, 'publicity', {})
-        self.assertIn('模型群聊', self.e['publicity']['group'])
+        self.assertIn('模型朋友圈', self.e['publicity']['moments'])
         s.Orchestrator.act(self.e, 'confirm_publicity', {})
         ticket = self.register()
         s.Orchestrator.act(self.e, 'answer_question', {'ticket': ticket})
@@ -158,7 +158,7 @@ class AgentIntegrationTests(unittest.TestCase):
         self.write_config()
         s.PlanningAgent.generate(self.e, BRIEF)
         self.assertEqual(self.e['agent_runs'][-1]['attempts'], 2)
-        self.model('publicity', 'transient')
+        self.model('publicity_article', 'transient')
         s.Orchestrator.act(self.e, 'confirm_plan', {})
         s.Orchestrator.act(self.e, 'publicity', {})
         self.assertTrue(self.e['publicity'])
@@ -205,7 +205,7 @@ class AgentIntegrationTests(unittest.TestCase):
         try:
             job.start()
             self.assertTrue(Provider.entered.wait(3))
-            code, _ = post('/api/public/'+self.e['id']+'/register', {'name': '同学', 'email': 'new@example.com', 'college': '学院'})
+            code, _ = post('/api/public/'+self.e['id']+'/register', {'name': '同学', 'email': 'new@example.com', 'contact': 'new@example.com', 'college': '学院'})
             self.assertEqual(code, 200)
             Provider.release.set()
             job.join(5)

@@ -29,8 +29,8 @@ from jsonschema import Draft202012Validator
 from .contracts import SCHEMAS, validate
 
 ROOT = Path(__file__).resolve().parents[1]
-ROLES = ('planning', 'publicity', 'registration', 'onsite', 'review')
-NAMES = dict(zip(ROLES, ('策划', '宣传', '报名', '现场', '复盘')))
+ROLES = ('planning', 'publicity_moments', 'publicity_article', 'publicity_xiaohongshu', 'registration', 'onsite', 'review')
+NAMES = dict(zip(ROLES, ('策划', '宣传·朋友圈', '宣传·公众号', '宣传·小红书', '报名', '现场', '复盘')))
 SLOTS = threading.BoundedSemaphore(3)
 MAX_BYTES = 2_000_000
 
@@ -42,7 +42,9 @@ DEFAULT_CONFIG = {
     },
     'agents': {
         'planning': {'api_url': '', 'model': '', 'api_key_env': 'PLANNING_API_KEY', 'prompt_file': 'prompts/planning.md'},
-        'publicity': {'api_url': '', 'model': '', 'api_key_env': 'PUBLICITY_API_KEY', 'prompt_file': 'prompts/publicity.md'},
+        'publicity_moments': {'api_url': '', 'model': '', 'api_key_env': 'PUBLICITY_MOMENTS_API_KEY', 'prompt_file': 'prompts/publicity.md'},
+        'publicity_article': {'api_url': '', 'model': '', 'api_key_env': 'PUBLICITY_ARTICLE_API_KEY', 'prompt_file': 'prompts/publicity.md'},
+        'publicity_xiaohongshu': {'api_url': '', 'model': '', 'api_key_env': 'PUBLICITY_XIAOHONGSHU_API_KEY', 'prompt_file': 'prompts/publicity.md'},
         'registration': {'api_url': '', 'model': '', 'api_key_env': 'REGISTRATION_API_KEY', 'prompt_file': 'prompts/registration.md'},
         'onsite': {'api_url': '', 'model': '', 'api_key_env': 'ONSITE_API_KEY', 'prompt_file': 'prompts/onsite.md'},
         'review': {'api_url': '', 'model': '', 'api_key_env': 'REVIEW_API_KEY', 'prompt_file': 'prompts/review.md'},
@@ -263,7 +265,7 @@ def call(role, task, context, fallback, tools=None, audit=None, check=None):
                 run['attempts'] += 1
                 if cfg['protocol'] == 'json':
                     payload = {'agent': role, 'task': task, 'system_prompt': system, 'context': context, 'output_schema': schema,
-                               'tools': {name: value['data'] for name, value in tools.items()}}
+                               'tools': {name: value.get('data') for name, value in tools.items()}}
                     if repaired:
                         payload['validation_error'] = validation_error
                     result = request(cfg, payload)

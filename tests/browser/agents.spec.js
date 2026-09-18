@@ -18,7 +18,7 @@ test.beforeAll(async()=>{
   folder=mkdtempSync(join(tmpdir(),'campus-model-e2e-'));
   [provider]=await launch(['tests/mock_provider.py','--port','18768'],process.env,/Mock ready/);
   const env={...process.env,EVENT_DB:join(folder,'data.db'),AGENT_ENV_FILE:join(folder,'.env'),MODEL_URL:''};
-  for(const role of ['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW']){
+  for(const role of ['PLANNING','PUBLICITY_MOMENTS','PUBLICITY_ARTICLE','PUBLICITY_XIAOHONGSHU','REGISTRATION','ONSITE','REVIEW']){
     env[role+'_API_URL']='http://127.0.0.1:18768/'+role.toLowerCase();env[role+'_MODEL']='test-'+role;env[role+'_MODE']='model';env[role+'_API_KEY']='test';env[role+'_PROTOCOL']='chat_completions';
   }
   const result=await launch(['server.py','--port','18767'],env,/Campus Events: (.+)/);
@@ -52,16 +52,15 @@ test('five model roles are operable from the UI with approval gates',async({page
   await page.getByRole('button',{name:'开始实施'}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await page.getByRole('button',{name:'宣传中心'}).click();
-  await page.getByRole('button',{name:'生成宣传内容'}).click();
   await expect(page.locator('.prose')).toContainText('模型公众号');
   await page.getByRole('button',{name:'智能修改文案'}).click();
   await page.getByLabel('修改要求').fill('缩短文案');
   await page.getByRole('button',{name:'生成新草稿'}).click();
-  await page.getByRole('button',{name:'确认宣传并开放报名'}).click();
+  await page.getByRole('button',{name:'确认宣传'}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await page.getByRole('button',{name:'报名管理'}).click();
   const joinUrl=await page.locator('.link-box a').getAttribute('href'),id=joinUrl.split('/').pop();
-  const response=await request.post(`http://127.0.0.1:18767/api/public/${id}/register`,{data:{name:'同学',email:'student@example.com',college:'学院',question:'在哪里举办？'}});
+  const response=await request.post(`http://127.0.0.1:18767/api/public/${id}/register`,{data:{name:'同学',contact:'13800000000',email:'student@example.com',college:'学院',question:'在哪里举办？'}});
   const {ticket}=await response.json();
   await page.getByRole('button',{name:'刷新活动数据'}).click();
   await page.getByRole('button',{name:'分析报名情况'}).click();
@@ -75,28 +74,24 @@ test('five model roles are operable from the UI with approval gates',async({page
   own=await request.post(`http://127.0.0.1:18767/api/public/${id}/ticket`,{data:{ticket}});
   expect((await own.json()).answer).toContain('大学报告厅');
   await page.getByRole('button',{name:'现场执行'}).click();
-  await page.getByRole('button',{name:'开启现场签到',exact:true}).click();
+  await page.getByRole('button',{name:'开始活动',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await request.post(`http://127.0.0.1:18767/api/public/${id}/checkin`,{data:{ticket}});
   await page.getByRole('button',{name:'刷新活动数据'}).click();
-  // TODO: 现场分析与流程调整依赖结构化方案时间线，下游对接完成后恢复
-  // await page.getByLabel('现场情况',{exact:true}).fill('嘉宾迟到十分钟');
-  // await page.getByRole('button',{name:'分析现场并提出建议'}).click();
-  // await expect(page.getByText('流程调整待确认',{exact:true})).toBeVisible();
+  await page.getByLabel('现场情况',{exact:true}).fill('嘉宾迟到十分钟');
+  await page.getByRole('button',{name:'分析现场并提出建议'}).click();
+  await expect(page.locator('.analysis-summary')).toContainText('模型现场分析');
   await page.screenshot({path:'test-results/model-onsite-desktop.png',fullPage:true});
-  // await page.getByRole('button',{name:'采纳调整'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  await page.getByRole('button',{name:'结束活动，收集反馈'}).click();
+  await page.getByRole('button',{name:'结束活动',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
-  // TODO: 复盘依赖结构化方案目标数据，下游对接完成后恢复
-  // await page.getByRole('button',{name:'活动复盘'}).click();
-  // await page.getByRole('button',{name:'生成活动复盘'}).click();
-  // await expect(page.getByText('实际报名 1 人。',{exact:true})).toBeVisible();
-  // await page.getByRole('button',{name:'确认复盘，生成总结'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  // await page.getByRole('button',{name:'确认总结并归档'}).click();
-  // await page.getByRole('button',{name:'确认执行'}).click();
-  // await expect(page.locator('#toast')).toContainText('已归档');
+  await page.getByRole('button',{name:'活动复盘'}).click();
+  await page.getByRole('button',{name:'生成活动复盘'}).click();
+  await expect(page.getByText('实际报名 1 人。',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'确认复盘，生成总结'}).click();
+  await page.getByRole('button',{name:'确认执行'}).click();
+  await page.getByRole('button',{name:'确认总结并归档'}).click();
+  await page.getByRole('button',{name:'确认执行'}).click();
+  await expect(page.locator('#toast')).toContainText('已归档');
   expect(errors).toEqual([]);
 });
 
