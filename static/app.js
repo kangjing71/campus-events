@@ -4,7 +4,7 @@ const icon = name => `<i data-lucide="${name}"></i>`;
 const labels = {DRAFT:'待补全策划',WAITING_PLAN_CONFIRMATION:'策划待确认',PLAN_CONFIRMED:'待生成宣传',WAITING_PUBLICITY_CONFIRMATION:'宣传待确认',REGISTRATION_OPEN:'报名进行中',LIVE:'现场进行中',FEEDBACK:'反馈收集中',WAITING_REVIEW_CONFIRMATION:'复盘待确认',WAITING_RECAP_CONFIRMATION:'总结待确认',COMPLETED:'已归档'};
 const pages = [['overview','layout-dashboard','活动总览'],['plan','clipboard-list','活动策划'],['publicity','megaphone','宣传中心'],['registration','users','报名管理'],['onsite','radio','现场执行'],['review','chart-no-axes-combined','活动复盘']];
 const statePage = {DRAFT:'plan',WAITING_PLAN_CONFIRMATION:'plan',PLAN_CONFIRMED:'publicity',WAITING_PUBLICITY_CONFIRMATION:'publicity',REGISTRATION_OPEN:'registration',LIVE:'onsite',FEEDBACK:'review',WAITING_REVIEW_CONFIRMATION:'review',WAITING_RECAP_CONFIRMATION:'review',COMPLETED:'review'};
-let events = [], event = null, page = 'overview', mode = 'rules', pubTab = 'article', publicData = null;
+let events = [], event = null, page = 'overview', view = 'home', mode = 'rules', pubTab = 'article', publicData = null;
 let agentSettings = {};
 let publicOrigin = location.origin;
 let fieldCounter = 0;
@@ -55,9 +55,10 @@ function stages(e) {
   const index={DRAFT:0,WAITING_PLAN_CONFIRMATION:0,PLAN_CONFIRMED:1,WAITING_PUBLICITY_CONFIRMATION:1,REGISTRATION_OPEN:2,LIVE:3,FEEDBACK:4,WAITING_REVIEW_CONFIRMATION:4,WAITING_RECAP_CONFIRMATION:5,COMPLETED:6}[e.state];
   return `<div class="stages">${[['clipboard-check','策划确认'],['megaphone','宣传准备'],['users','活动报名'],['radio','现场执行'],['chart-no-axes-combined','反馈复盘'],['flag','总结归档']].map(([ico,label],i)=>`<div class="stage ${i<index?'done':i===index?'current':''}"><div class="stage-icon">${icon(i<index?'check':ico)}</div>${label}<small>${i<index?'已完成':i===index?'进行中':'待开始'}</small></div>`).join('')}</div>`;
 }
+const nextTasks={DRAFT:['补全活动策划','活动目标、时间地点与人员安排','开始策划'],WAITING_PLAN_CONFIRMATION:['策划方案待确认','核对活动安排、预算与成功指标','查看策划'],PLAN_CONFIRMED:['准备活动宣传','报名入口已创建，等待宣传内容','生成宣传'],WAITING_PUBLICITY_CONFIRMATION:['宣传内容待确认','确认后即可开放报名入口','预览宣传'],REGISTRATION_OPEN:['关注报名进度','核对参与者需求与待回复问题','管理报名'],LIVE:['活动现场进行中','关注签到、流程与实时反馈','进入现场'],FEEDBACK:['汇总参与者反馈','核对真实数据，生成活动复盘','查看复盘'],WAITING_REVIEW_CONFIRMATION:['复盘报告待确认','确认后生成活动总结宣传稿','审阅报告'],WAITING_RECAP_CONFIRMATION:['总结宣传待确认','确认文案后完成本次活动归档','查看总结'],COMPLETED:['本次活动已归档','活动数据与执行记录已保留','查看报告']};
 function overview() {
   const e=event,b=e.brief;
-  const tasks={DRAFT:['补全活动策划','活动目标、时间地点与人员安排','开始策划'],WAITING_PLAN_CONFIRMATION:['策划方案待确认','核对活动安排、预算与成功指标','查看策划'],PLAN_CONFIRMED:['准备活动宣传','报名入口已创建，等待宣传内容','生成宣传'],WAITING_PUBLICITY_CONFIRMATION:['宣传内容待确认','确认后即可开放报名入口','预览宣传'],REGISTRATION_OPEN:['关注报名进度','核对参与者需求与待回复问题','管理报名'],LIVE:['活动现场进行中','关注签到、流程与实时反馈','进入现场'],FEEDBACK:['汇总参与者反馈','核对真实数据，生成活动复盘','查看复盘'],WAITING_REVIEW_CONFIRMATION:['复盘报告待确认','确认后生成活动总结宣传稿','审阅报告'],WAITING_RECAP_CONFIRMATION:['总结宣传待确认','确认文案后完成本次活动归档','查看总结'],COMPLETED:['本次活动已归档','活动数据与执行记录已保留','查看报告']}[e.state];
+  const tasks=nextTasks[e.state];
   return `<div class="overview-grid"><div class="event-feature">${badge(e.state)}<h2>${esc(b.name)}</h2><div class="event-meta"><span>${icon('calendar-days')}${day(b.date)}</span><span>${icon('map-pin')}${esc(b.location||'地点待确定')}</span><span>${icon('users')}${esc(b.organizer||'主办方待确定')}</span></div></div><div class="next-task"><span class="eyebrow">下一步 · NEXT UP</span><h3>${tasks[0]}</h3><p>${tasks[1]}</p><button class="primary" data-page="${statePage[e.state]}">${tasks[2]}${icon('arrow-up-right')}</button></div></div>
   ${metricCards(e)}<div class="section-head"><h2>活动进程</h2><span class="small muted">负责人确认后推进</span></div>${stages(e)}
   <div class="columns"><div><div class="section-head"><h2>Agent 协作</h2><span class="badge gray">6 个角色</span></div><div class="agent-list">${[['workflow','总控 Agent',labels[e.state]],['clipboard-list','策划 Agent',e.plan?'方案已生成 · 第 '+e.revision+' 版':'等待活动需求'],['megaphone','宣传 Agent',e.publicity?(e.publicity.approved?'宣传已确认':'文案待确认'):'等待策划确认'],['users','报名 Agent',e.registration_path?'累计 '+e.metrics.registration+' 人报名':'等待策划确认'],['radio','现场 Agent',e.state==='LIVE'?'现场执行中':'已签到 '+e.metrics.attendance+' 人'],['chart-no-axes-combined','复盘 Agent',e.review?'报告已生成':'等待活动数据']].map(([ico,name,status])=>`<div class="agent"><div class="agent-icon">${icon(ico)}</div><div><h3>${name}</h3><p>${esc(status)}</p></div></div>`).join('')}</div></div><div><div class="section-head"><h2>最近动态</h2><span class="small muted">${e.logs.length} 条记录</span></div>${logs(e.logs.slice(-4))}</div></div>`;
@@ -150,20 +151,34 @@ async function settingsModal(){
   modal(`<h2>Agent 连接状态</h2><div class="table-wrap"><table><thead><tr><th>角色</th><th>状态</th><th>模型</th><th>测试</th></tr></thead><tbody>${Object.entries(settings).map(([role,s])=>`<tr><td>${esc(s.name)}</td><td>${esc(s.error||({model:'模型已配置',rules:'规则模式'}[s.mode]))}</td><td>${esc(s.model||'—')}</td><td><button class="icon-btn" title="测试${esc(s.name)} Agent" data-test-agent="${role}" ${s.mode!=='model'?'disabled':''}>${icon('plug-zap')}</button></td></tr>`).join('')}</tbody></table></div><div class="section"><h3>最近调用</h3><ul class="timeline">${runs.slice(0,12).map(r=>`<li><time>${r.duration_ms} ms</time><span>${esc(r.role)} · ${esc(r.task)}<small>${r.status==='success'?'生成成功':'调用失败'} · ${esc(r.mode)} · ${fmt(r.at)}${r.error?' · '+esc(r.error):''}</small></span></li>`).join('')||'<li>暂无调用记录</li>'}</ul></div><div class="form-actions">${button('关闭','close',false,'x')}</div>`);
   Object.keys(settings).forEach((role,i)=>$('#modal tbody').rows[i].lastElementChild.insertAdjacentHTML('beforeend',` <a href="/agents/${role}">独立测试</a>`));
 }
+function renderHome() {
+  const cards=events.map(e=>`<button class="project-card" data-open="${e.id}"><div class="card-head">${badge(e.state)}<span class="small muted">${esc(e.brief.owner||'')}</span></div><h3>${esc(e.brief.name)}</h3><div class="event-meta"><span>${icon('calendar-days')}${day(e.brief.date)}</span><span>${icon('map-pin')}${esc(e.brief.location||'地点待确定')}</span></div><div class="card-stats"><span>${icon('users')}${e.metrics.registration} 人报名</span><span>${icon('scan-line')}${e.metrics.attendance} 人签到</span><span>${icon('message-square')}${e.metrics.feedback} 条反馈</span></div><div class="card-foot"><span>下一步：${esc(nextTasks[e.state][0])}</span>${icon('arrow-up-right')}</div></button>`).join('');
+  $('#app').innerHTML=`<main class="home-shell"><header class="topbar"><div class="breadcrumb"><strong>校园共创</strong></div><div class="top-actions"><span class="small muted">${events.length} 场活动</span><button class="icon-btn" data-action="agent-settings" title="Agent 连接状态">${icon('settings-2')}</button><button class="icon-btn" data-action="logout" title="退出登录">${icon('log-out')}</button></div></header><div class="content"><div class="heading"><div><h1>项目列表</h1><p>点击项目进入活动总览，或创建新的活动。</p></div><div class="actions">${events.length?button('新建活动','new',true,'plus'):''}</div></div>${events.length?`<div class="project-grid">${cards}</div>`:empty('还没有活动项目','创建第一个活动，开始从策划到归档的全流程管理。',button('新建活动','new',true,'plus'))}</div></main>`;
+  refresh();
+}
+function openProject(id) { const found=events.find(e=>e.id===id); if(!found) return; event=found; view='workspace'; page='overview'; sessionStorage.setItem('campus-event',id); render(); }
+function goHome() { view='home'; sessionStorage.removeItem('campus-event'); render(); }
 function render() {
   if(publicId) return renderPublic();
   if(!key) return login();
+  if(!event || view==='home') return renderHome();
   const selected=pages.find(p=>p[0]===page);
-  $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><div class="sidebar-label">活动工作空间</div><nav class="nav">${pages.map(([id,ico,title])=>`<button data-page="${id}" class="${page===id?'active':''}">${icon(ico)}${title}${id==='registration'&&event?`<span class="nav-count">${event.metrics.registration}</span>`:''}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="mode"><span class="dot"></span>${mode==='model'?'模型生成模式':'规则生成模式'}</div><p class="small muted" style="margin-top:10px">${mode==='model'?'已配置模型接口':'未接入大模型'}</p><button data-action="logout" style="margin-top:15px" class="icon-btn" title="退出工作台">${icon('log-out')}</button></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">工作空间 ${icon('chevron-right')}<strong>${selected[2]}</strong></div><div class="top-actions">${events.length?`<select aria-label="切换活动" id="event-select">${events.map(e=>`<option value="${e.id}" ${e.id===event?.id?'selected':''}>${esc(e.brief.name)}</option>`).join('')}</select>`:''}<button class="icon-btn" data-action="refresh" title="刷新活动数据">${icon('refresh-cw')}</button><span class="avatar">${esc(event?.brief.owner?.slice(0,1)||'共')}</span></div></header><div class="content"><div class="heading"><div><h1>${selected[2]}</h1><p>${page==='overview'?'把每一个好想法，变成一次好活动。':esc(event?.brief.name||'创建你的第一场活动')}</p></div><div class="actions">${event?.registration_path&&page==='overview'?`<a href="${esc(link())}" target="_blank" rel="noopener"><button>${icon('external-link')}参与者入口</button></a>`:''}${button('新建活动','new',true,'plus')}</div></div>${event?({overview,plan:planView,publicity:publicityView,registration:registrationView,onsite:onsiteView,review:reviewView}[page])():empty('你的下一场活动，从这里开始','创建活动，填写需求，开始筹备。',button('创建第一场活动','new',true,'plus'))}</div></main></div>`;
+  $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><div class="sidebar-label">活动管理</div><nav class="nav">${pages.map(([id,ico,title])=>`<button data-page="${id}" class="${page===id?'active':''}">${icon(ico)}${title}${id==='registration'&&event?`<span class="nav-count">${event.metrics.registration}</span>`:''}</button>`).join('')}</nav><div class="sidebar-bottom"><div class="mode"><span class="dot"></span>${mode==='model'?'模型模式':'规则模式'}</div><p class="small muted" style="margin-top:10px">${mode==='model'?'已接入模型服务':'未配置模型接口'}</p><button data-action="logout" style="margin-top:15px" class="icon-btn" title="退出工作台">${icon('log-out')}</button></div></aside><main class="main"><header class="topbar"><div class="breadcrumb"><button class="crumb" data-action="go-home">项目列表</button>${icon('chevron-right')}<strong>${esc(event?.brief.name||'')}</strong>${icon('chevron-right')}<strong>${selected[2]}</strong></div><div class="top-actions">${events.length?`<select aria-label="切换活动" id="event-select">${events.map(e=>`<option value="${e.id}" ${e.id===event?.id?'selected':''}>${esc(e.brief.name)}</option>`).join('')}</select>`:''}<button class="icon-btn" data-action="refresh" title="刷新活动数据">${icon('refresh-cw')}</button><span class="avatar">${esc(event?.brief.owner?.slice(0,1)||'共')}</span></div></header><div class="content"><div class="heading"><div><h1>${selected[2]}</h1><p>${page==='overview'?'策划、宣传、报名、现场与复盘，一站式管理活动全流程。':esc(event?.brief.name||'')}</p></div><div class="actions">${event?.registration_path&&page==='overview'?`<a href="${esc(link())}" target="_blank" rel="noopener"><button>${icon('external-link')}参与者入口</button></a>`:''}${events.length?button('新建活动','new',true,'plus'):''}</div></div>${event?({overview,plan:planView,publicity:publicityView,registration:registrationView,onsite:onsiteView,review:reviewView}[page])():empty('你的下一场活动，从这里开始','创建活动，填写需求，开始筹备。',button('创建第一场活动','new',true,'plus'))}</div></main></div>`;
   if(event)document.querySelector('.heading').insertAdjacentHTML('afterend',agentPanel());
   document.querySelector('.top-actions').insertAdjacentHTML('afterbegin','<button class="icon-btn" data-action="agent-settings" title="Agent 连接状态">'+icon('settings-2')+'</button>');
   const connected=Object.values(agentSettings).filter(s=>s.mode==='model').length;
   document.querySelector('.sidebar-bottom .mode').innerHTML='<span class="dot"></span>'+connected+' / 5 个模型已配置';
-  document.querySelector('.sidebar-bottom p').textContent=connected===5?'五个角色均使用模型配置':connected?'其余角色按各自配置运行':'未接入大模型';
+  document.querySelector('.sidebar-bottom p').textContent=connected===5?'5 个角色均已接入模型':connected?'部分角色使用规则模式':'未配置模型接口';
   refresh();
 }
-function login() { $('#app').innerHTML=`<div class="login panel"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><h1>进入活动工作台</h1><form id="login-form">${field('key','负责人访问密钥','password','','required autocomplete="current-password"')}<div class="form-actions"><button class="primary" type="submit">进入工作台${icon('arrow-right')}</button></div></form></div>`;refresh(); }
-async function loadEvents(){const result=await Promise.all([api('/api/events'),api('/api/agents')]);events=result[0];agentSettings=result[1];event=events.find(e=>e.id===event?.id)||events[0]||null;render();}
+function login() { $('#app').innerHTML=`<div class="login panel"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><h1>负责人登录</h1><form id="login-form">${field('key','负责人访问密钥','password','','required autocomplete="current-password"')}<div class="form-actions"><button class="primary" type="submit">登录${icon('arrow-right')}</button></div></form></div>`;refresh(); }
+async function loadEvents(){
+  const result=await Promise.all([api('/api/events'),api('/api/agents')]);events=result[0];agentSettings=result[1];
+  if(!booted){booted=true;const saved=sessionStorage.getItem('campus-event');event=events.find(e=>e.id===saved)||null;view=event?'workspace':'home';}
+  else{event=events.find(e=>e.id===event?.id)||null;if(!event&&view==='workspace')view='home';}
+  render();
+}
+let booted=false;
 async function act(action,data={}){if(['planning_chat','plan','plan_from_brief','publicity','regenerate_recap','answer_question','analyze_registration','analyze_onsite','review','confirm_review'].includes(action))toast('Agent 正在处理，请稍候…');event=await api(`/api/events/${event.id}/actions/${action}`,{...data,expected_version:event.version});events=events.map(e=>e.id===event.id?event:e);render();toast('已完成：'+labels[event.state]);}
 function modal(html) { $('#modal').innerHTML=html;$('#modal').showModal();refresh(); }
 function confirmAction(action,title,description) { modal(`<h2>${title}</h2><p>${description}</p><div class="form-actions">${button('取消','close',false,'x')}<button class="primary" data-confirm="${action}">${icon('check')}确认执行</button></div>`); }
@@ -184,6 +199,7 @@ async function poster(recap=false){
 
 document.addEventListener('click',ev=>{
   const target=ev.target.closest('button');if(!target||target.disabled)return;
+  if(target.dataset.open){openProject(target.dataset.open);return;}
   if(target.dataset.page){page=target.dataset.page;render();return;}
   if(target.dataset.tab){pubTab=target.dataset.tab;render();return;}
   if(target.dataset.publicTab){renderPublic(target.dataset.publicTab);return;}
@@ -194,6 +210,7 @@ document.addEventListener('click',ev=>{
   if(target.dataset.confirm){$('#modal').close();run(()=>act(target.dataset.confirm));return;}
   const action=target.dataset.action;if(!action)return;ev.preventDefault();
   if(action==='close')return $('#modal').close();
+  if(action==='go-home')return goHome();
   if(action==='new')return modal(`<h2>新建校园活动</h2><form id="new-form">${field('name','活动名称','text','','required placeholder="为这次相聚起个名字" maxlength="100"')}<div class="form-actions">${button('取消','close',false,'x')}<button type="submit" class="primary">${icon('plus')}创建活动</button></div></form>`);
   if(action==='logout'){sessionStorage.removeItem('campus-key');key='';return login();}
   if(action==='example')return example();
@@ -222,7 +239,7 @@ document.addEventListener('submit',ev=>{
   ev.preventDefault();const form=ev.target,data=formData(form);
   run(async()=>{
     if(form.id==='login-form'){key=data.key.trim();await loadEvents();sessionStorage.setItem('campus-key',key);}
-    if(form.id==='new-form'){event=await api('/api/events',data);events.unshift(event);page='plan';$('#modal').close();render();toast('活动已创建');}
+    if(form.id==='new-form'){event=await api('/api/events',data);events.unshift(event);view='workspace';page='overview';sessionStorage.setItem('campus-event',event.id);$('#modal').close();render();toast('活动已创建');}
     if(form.id==='plan-form'){await act('plan',data);$('#modal').close();}
     if(form.id==='planning-chat-form')await act('planning_chat',data);
     if(form.id==='onsite-agent-form')await act('analyze_onsite',data);
@@ -237,7 +254,7 @@ document.addEventListener('submit',ev=>{
   });
 });
 document.addEventListener('input',ev=>{if(ev.target.id==='search'){const q=ev.target.value.toLowerCase();$('#registration-table').innerHTML=registrationTable(event.registrations.filter(r=>[r.name,r.email,r.college].some(v=>v.toLowerCase().includes(q))));refresh();}});
-document.addEventListener('change',ev=>{if(ev.target.id==='event-select'){event=events.find(e=>e.id===ev.target.value);render();}});
+document.addEventListener('change',ev=>{if(ev.target.id==='event-select'){event=events.find(e=>e.id===ev.target.value);if(event)sessionStorage.setItem('campus-event',event.id);render();}});
 $('#modal').addEventListener('close',()=>{if(!$('#modal').open)$('#modal').innerHTML='';});
 
 function ticket(){return localStorage.getItem('ticket-'+publicId)||'';}

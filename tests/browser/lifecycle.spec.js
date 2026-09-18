@@ -4,10 +4,11 @@ const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 let processHandle, folder, url, adminKey;
+const PYTHON = process.env.PYTHON_BIN || 'python3';
 
 test.beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), 'campus-e2e-'));
-  processHandle = spawn('python3', ['server.py', '--port', '18765', '--public-base-url', 'http://localhost:18765'], {
+  processHandle = spawn(PYTHON, ['server.py', '--port', '18765', '--public-base-url', 'http://localhost:18765'], {
     cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_URL: '', AGENT_ENV_FILE:join(folder,'.env'), ...Object.fromEntries(['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -34,6 +35,7 @@ test('complete organizer and participant lifecycle on desktop and mobile', async
   await page.getByRole('button',{name:'新建活动',exact:true}).click();
   await page.getByLabel('活动名称',{exact:true}).fill('校园 AI 创新交流夜');
   await page.getByRole('button',{name:'创建活动',exact:true}).click();
+  await page.getByRole('button',{name:'开始策划'}).click();
   await page.getByRole('button',{name:'填入示例需求'}).click();
   await page.getByRole('button',{name:'生成策划方案'}).click();
   await expect(page.getByText('活动当天 Timeline',{exact:true})).toBeVisible();

@@ -3,9 +3,10 @@ const { spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const PYTHON = process.env.PYTHON_BIN || 'python3';
 let server, provider, folder, url, key;
 async function launch(args, env, match){
-  const child=spawn('python3',args,{cwd:process.cwd(),env,stdio:['ignore','pipe','pipe']});
+  const child=spawn(PYTHON,args,{cwd:process.cwd(),env,stdio:['ignore','pipe','pipe']});
   let error='';child.stderr.on('data',d=>error+=d);
   return new Promise((resolve,reject)=>{
     const timer=setTimeout(()=>{child.kill();reject(new Error(error||'startup timeout'));},10000);
@@ -30,7 +31,6 @@ test.afterAll(async()=>{
 test('five model roles are operable from the UI with approval gates',async({page,request})=>{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(url);
-  await expect(page.getByText('5 / 5 个模型已配置')).toBeVisible();
   await page.getByRole('button',{name:'Agent 连接状态'}).click();
   await page.getByRole('button',{name:'测试策划 Agent'}).click();
   await expect(page.locator('#toast')).toContainText('测试通过');
@@ -38,6 +38,8 @@ test('five model roles are operable from the UI with approval gates',async({page
   await page.getByRole('button',{name:'新建活动',exact:true}).click();
   await page.getByLabel('活动名称',{exact:true}).fill('智能策划活动');
   await page.getByRole('button',{name:'创建活动',exact:true}).click();
+  await expect(page.getByText('5 / 5 个模型已配置')).toBeVisible();
+  await page.getByRole('button',{name:'开始策划'}).click();
   await page.getByLabel('活动想法或补充信息').fill('先讨论目标');
   await page.getByRole('button',{name:'发送给策划 Agent'}).click();
   await expect(page.locator('.agent-chat')).toContainText('请补充时间地点');
