@@ -1,0 +1,18 @@
+{
+  "name": "campus-events-mvp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild vendor-entry.js --bundle --minify --outfile=static/vendor.js",
+    "test:e2e": "playwright test",
+    "start": "python3 server.py"
+  },
+  "dependencies": {
+    "lucide": "^1.47.0",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.1",
+    "esbuild": "^0.28.2"
+  }
+}

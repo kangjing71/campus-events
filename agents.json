@@ -1,0 +1,17 @@
+{
+  "defaults": {
+    "mode": "auto", "protocol": "codex_exec", "api_url": "", "model": "gpt-6-astra",
+    "codex_bin": "/home/lzh/.local/lib/campus-events/codex",
+    "codex_home": "/home/lzh/.local/share/campus-events-codex",
+    "codex_proxy": "http://127.0.0.1:7897",
+    "temperature": 0.3, "timeout_seconds": 180, "retries": 1,
+    "max_tool_rounds": 3, "tool_calling": true, "response_format": "prompt"
+  },
+  "agents": {
+    "planning": {"api_url": "", "model": "", "api_key_env": "PLANNING_API_KEY", "prompt_file": "prompts/planning.md"},
+    "publicity": {"api_url": "", "model": "", "api_key_env": "PUBLICITY_API_KEY", "prompt_file": "prompts/publicity.md"},
+    "registration": {"api_url": "", "model": "", "api_key_env": "REGISTRATION_API_KEY", "prompt_file": "prompts/registration.md"},
+    "onsite": {"api_url": "", "model": "", "api_key_env": "ONSITE_API_KEY", "prompt_file": "prompts/onsite.md"},
+    "review": {"api_url": "", "model": "", "api_key_env": "REVIEW_API_KEY", "prompt_file": "prompts/review.md"}
+  }
+}
