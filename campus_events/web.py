@@ -85,6 +85,9 @@ class Handler(BaseHTTPRequestHandler):
             public = re.fullmatch(r'/api/public/([\w-]+)/(register|checkin|feedback|ticket)', path)
             if not public and not self.authorized():
                 return self.send(401, {'error': '请输入负责人访问密钥'})
+            stream = re.fullmatch(r'/api/events/([\w-]+)/chat_stream', path)
+            if stream and not public:
+                return self.chat_stream(stream[1], data)
             with LOCK:
                 if public:
                     eid, action = public.groups()
@@ -125,6 +128,78 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send(500, {'error': '服务内部错误，本次操作未完成'})
             raise
+
+    def chat_stream(self, eid, data):
+        """策划对话流式端点：SSE 逐帧返回生成过程，结束后加锁比对版本再落库。"""
+        self.protocol_version = 'HTTP/1.1'
+        with LOCK:
+            e = load(eid)
+            if data.get('expected_version') != e.get('version'):
+                return self.send(400, {'error': '活动数据已更新，请刷新并重新核对后操作'})
+            if e['state'] not in Orchestrator.ALLOWED['planning_chat']:
+                return self.send(400, {'error': '当前阶段不允许此操作，请刷新活动状态'})
+            version = e.get('version')
+        try:
+            rules = runtime.settings('planning')['mode'] == 'rules'
+        except runtime.AgentError:
+            rules = False
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        self.end_headers()
+
+        def emit(event, payload):
+            frame = f'event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n'
+            self.wfile.write(f'{len(frame.encode("utf-8")):X}\r\n{frame}\r\n'.encode('utf-8'))
+            self.wfile.flush()
+
+        generation = None
+        failed = False
+        try:
+            if rules:
+                PlanningAgent.collect(e, {'message': data.get('message')})
+            else:
+                generation = PlanningAgent.stream_collect(e, {'message': data.get('message')})
+                for event in generation:
+                    if event['type'] in ('delta', 'tool'):
+                        emit(event['type'], event)
+                    elif event['type'] == 'error':
+                        failed = True
+                        emit('error', {'message': event['message']})
+                        break
+            if not failed:
+                last = e['planning_messages'][-1]
+                emit('message', {'reply': last['content'], 'questions': last.get('questions', []),
+                                 'missing_fields': last.get('missing_fields', [])})
+                with LOCK:
+                    if load(eid).get('version') != version:
+                        failed = True
+                        emit('error', {'message': '生成期间活动数据发生变化，本次结果未写入，请刷新后重试'})
+                    else:
+                        save(e)
+                        emit('done', dict(e, metrics=metrics(e)))
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        except (Problem, runtime.AgentError) as ex:
+            failed = True
+            try:
+                emit('error', {'message': str(ex)})
+            except OSError:
+                pass
+        except Exception:
+            try:
+                emit('error', {'message': '服务内部错误，本次操作未完成'})
+            except OSError:
+                pass
+        finally:
+            if generation is not None:
+                generation.close()
+            try:
+                self.wfile.write(b'0\r\n\r\n')
+                self.wfile.flush()
+            except OSError:
+                pass
 
 
 def main():

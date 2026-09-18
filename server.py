@@ -12,7 +12,7 @@ from types import ModuleType
 from campus_events import domain, store, web
 
 _STORE_NAMES = {'ROOT', 'DB', 'LOCK', 'sqlite3', 'init_db', 'admin_token', 'load', 'save', 'now', 'Problem'}
-_DOMAIN_NAMES = {'FIELDS', 'STATES', 'text', 'number', 'invoke', 'tool', 'feedback_evidence',
+_DOMAIN_NAMES = {'FIELDS', 'REQUIRED', 'STATES', 'text', 'number', 'invoke', 'tool', 'feedback_evidence',
                  'registration_context', 'PlanningAgent', 'RegistrationAgent', 'PublicityAgent',
                  'OnsiteAgent', 'ReviewAgent', 'metrics', 'Orchestrator', 'new_event',
                  'public_event'}

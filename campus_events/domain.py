@@ -4,11 +4,13 @@ import re
 import secrets
 from datetime import datetime, timedelta
 from agents import runtime
+from agents.agent import Agent
 from agents.contracts import validate_plan
 from . import store
 from .store import Problem, now
 
 FIELDS = {'name': '活动名称', 'objective': '活动目标', 'type': '活动类型', 'level': '活动级别', 'format': '活动形式', 'date': '活动时间', 'location': '活动地点', 'audience': '目标参与者', 'capacity': '预计人数', 'budget': '预算', 'organizer': '主办方', 'owner': '负责人'}
+REQUIRED = ('name', 'type', 'format', 'audience', 'date', 'location', 'capacity', 'budget')
 STATES = ['DRAFT', 'WAITING_PLAN_CONFIRMATION', 'PLAN_CONFIRMED', 'WAITING_PUBLICITY_CONFIRMATION', 'REGISTRATION_OPEN', 'LIVE', 'FEEDBACK', 'WAITING_REVIEW_CONFIRMATION', 'WAITING_RECAP_CONFIRMATION', 'COMPLETED']
 
 
@@ -32,7 +34,7 @@ def number(value, label, low, high, integer=False):
         raise Problem(f'{label}应为 {low} 到 {high} 之间的' + ('整数' if integer else '数字'))
 
 
-def invoke(e, role, task, context, fallback, tools=None, check=None):
+def make_audit(e):
     def audit(run):
         run['scope'] = e.get('_run_scope', 'activity')
         e.setdefault('agent_runs', []).append(run)
@@ -41,8 +43,12 @@ def invoke(e, role, task, context, fallback, tools=None, check=None):
             with store.sqlite3.connect(store.DB) as c:
                 if c.execute("SELECT 1 FROM sqlite_master WHERE name='agent_runs'").fetchone():
                     c.execute('INSERT INTO agent_runs VALUES (?, ?, ?)', (run['id'], e.get('id'), json.dumps(run, ensure_ascii=False)))
+    return audit
+
+
+def invoke(e, role, task, context, fallback, tools=None, check=None):
     try:
-        return runtime.call(role, task, context, fallback, tools=tools, audit=audit, check=check)
+        return runtime.call(role, task, context, fallback, tools=tools, audit=make_audit(e), check=check)
     except runtime.AgentError as ex:
         raise Problem(str(ex))
 
@@ -64,14 +70,15 @@ def registration_context(e):
 
 class PlanningAgent:
     @staticmethod
-    def collect(e, data):
-        message = text(data.get('message'), '需求描述', 6000)
+    def _collect_inputs(e, message):
         full_history = e.get('planning_messages', [])
         history = full_history[-20:]
-        context = {'current_time': now(), 'brief': e['brief'], 'history': history, 'message': message, 'required_fields': FIELDS}
+        context = {'current_time': now(), 'brief': e['brief'], 'history': history, 'message': message, 'required_fields': {k: FIELDS[k] for k in REQUIRED}}
         fallback = {'brief_patch': {}, 'reply': '策划 Agent 尚未配置模型接口，请在下方表单补充信息；已保留你的需求描述。', 'questions': []}
-        result = invoke(e, 'planning', 'collect_brief', context, fallback,
-                        {'get_event_brief': tool('读取当前活动需求', e['brief'])})
+        return context, fallback, {'get_event_brief': tool('读取当前活动需求', e['brief'])}
+
+    @staticmethod
+    def _apply_collect(e, message, result):
         brief = {**e['brief'], **result['brief_patch']}
         if 'date' in brief:
             try:
@@ -85,18 +92,51 @@ class PlanningAgent:
                 e['previous_plan'] = e.pop('plan')
             e['state'] = 'DRAFT'
             e['brief'] = brief
-        missing = [label for key, label in FIELDS.items() if brief.get(key) is None or str(brief[key]).strip() == '']
+        missing = [FIELDS[key] for key in REQUIRED if brief.get(key) is None or str(brief[key]).strip() == '']
         result['missing_fields'] = missing
-        e['planning_messages'] = (full_history + [{'role': 'user', 'content': message},
+        e['planning_messages'] = (e.get('planning_messages', []) + [{'role': 'user', 'content': message},
             {'role': 'assistant', 'content': result['reply'], 'questions': result['questions'], 'missing_fields': missing}])[-40:]
-        log(e, '策划 Agent', '已处理需求对话' + ('，还需补充：' + '、'.join(missing) if missing else '，基础信息已齐全'))
+        log(e, '策划', '已处理需求对话' + ('，还需补充：' + '、'.join(missing) if missing else '，基础信息已齐全'))
+
+    @staticmethod
+    def collect(e, data):
+        message = text(data.get('message'), '需求描述', 6000)
+        context, fallback, tools = PlanningAgent._collect_inputs(e, message)
+        result = invoke(e, 'planning', 'collect_brief', context, fallback, tools)
+        PlanningAgent._apply_collect(e, message, result)
+
+    @staticmethod
+    def stream_collect(e, data):
+        """collect 的流式版本：产出 delta/tool/error 事件，result 落地后由调用方保存。
+
+        成功后 e 的修改与 collect() 完全一致（planning_messages、brief、state、日志）。
+        """
+        message = text(data.get('message'), '需求描述', 6000)
+        context, _, tools = PlanningAgent._collect_inputs(e, message)
+        agent = Agent('planning', tools=tools)
+        result = None
+        for event in agent.stream('collect_brief', context, audit=make_audit(e)):
+            if event['type'] == 'result':
+                result = event['value']
+            else:
+                yield event
+        if result is None:
+            return
+        try:
+            PlanningAgent._apply_collect(e, message, result)
+        except Problem as ex:
+            yield {'type': 'error', 'message': str(ex)}
 
     @staticmethod
     def generate(e, data):
-        missing = [label for key, label in FIELDS.items() if data.get(key) is None or str(data[key]).strip() == '']
+        missing = [FIELDS[key] for key in REQUIRED if data.get(key) is None or str(data[key]).strip() == '']
         if missing:
             raise Problem('请补充：' + '、'.join(missing))
-        base = {key: text(str(data[key]), label, 500) for key, label in FIELDS.items()}
+        base = {key: text(str(data[key]), label, 500) for key, label in FIELDS.items() if key in REQUIRED}
+        base['objective'] = str(data.get('objective') or '')[:500]
+        base['level'] = str(data.get('level') or '')[:100]
+        base['organizer'] = str(data.get('organizer') or '')[:200]
+        base['owner'] = str(data.get('owner') or '活动负责人')[:100]
         base['capacity'] = number(data['capacity'], '预计人数', 1, 100000, True)
         base['budget'] = round(number(data['budget'], '预算', 0, 10000000), 2)
         try:
@@ -106,14 +146,16 @@ class PlanningAgent:
         except ValueError:
             raise Problem('请输入有效活动时间')
         base['constraints'] = str(data.get('constraints', ''))[:2000]
-        base['duration'] = number(data.get('duration', 120), '活动时长', 30, 720, True)
+        if data.get('duration') is None or str(data.get('duration')).strip() == '':
+            raise Problem('请补充：活动时长')
+        base['duration'] = number(data['duration'], '活动时长', 30, 720, True)
         cap = base['capacity']
         duration = base['duration']
         budget_cents = round(base['budget'] * 100)
         shared_cents = round(budget_cents * .4)
         timeline = [{'id': secrets.token_hex(4), 'time': (start + timedelta(minutes=m)).isoformat(timespec='minutes'), 'title': title, 'owner': base['owner']} for m, title in [(-30, '工作人员就位 / 开放签到'), (0, '主持人开场'), (10, '主题分享'), (round(duration * .55), '互动讨论与问答'), (round(duration * .8), '自由交流'), (duration, '活动结束')]]
         fallback = {
-            'summary': f"围绕“{base['objective']}”，面向{base['audience']}组织{base['format']}。由{base['owner']}负责协调场地、参与者和现场分工。" + (f"额外约束待负责人核对落实：{base['constraints']}" if base['constraints'] else ''),
+            'summary': f"围绕“{base['objective'] or base['name']}”，面向{base['audience']}组织{base['format']}。由{base['owner']}负责协调场地、参与者和现场分工。" + (f"额外约束待负责人核对落实：{base['constraints']}" if base['constraints'] else ''),
             'timeline': [{k: v for k, v in t.items() if k != 'id'} for t in timeline],
             'preparation': [{'day': day, 'task': task} for day, task in [('T-14', '确认场地、工作人员及活动内容'), ('T-7', '开放报名并发布首轮宣传'), ('T-3', '检查报名进度与物资'), ('T-1', '核对名单、准备参与者提醒'), ('T', '签到与现场执行'), ('T+1', '收集反馈'), ('T+3', '完成复盘及活动总结')]],
             'roles': [{'role': role, 'task': task} for role, task in [('总负责人', '审批方案、预算与现场调整'), ('宣传组', '准备宣传素材并跟进报名'), ('现场组', '场地物资、签到及流程提醒')]],
@@ -131,7 +173,7 @@ class PlanningAgent:
         e['brief'], e['plan'] = base, result
         e['state'] = 'WAITING_PLAN_CONFIRMATION'
         e['revision'] += 1
-        log(e, '策划 Agent', f"生成第 {e['revision']} 版策划，等待负责人确认")
+        log(e, '策划', f"生成第 {e['revision']} 版策划，等待负责人确认")
 
 
 class RegistrationAgent:
@@ -151,7 +193,7 @@ class RegistrationAgent:
                 raise ValueError('答复依据必须是活动事实中的原文片段')
         r['answer_draft'] = invoke(e, 'registration', 'answer_question', context, fallback,
                                   {'get_event_facts': tool('读取可供报名者查阅的活动事实', facts)}, check)
-        log(e, '报名 Agent', '生成答疑草稿，等待负责人确认后对参与者可见')
+        log(e, '报名', '生成答疑草稿，等待负责人确认后对参与者可见')
 
     @staticmethod
     def analyze(e):
@@ -159,12 +201,12 @@ class RegistrationAgent:
         fallback = {'summary': f"当前报名 {len(e['registrations'])} 人，目标 {e['brief']['capacity']} 人。", 'suggestions': ['逐一核对特殊需求和未答复问题。'], 'needs_attention': []}
         e['registration_analysis'] = invoke(e, 'registration', 'analyze_registration', context, fallback,
                                            {'get_registration_summary': tool('读取报名统计及去标识样本', context)})
-        log(e, '报名 Agent', '已生成报名进度分析')
+        log(e, '报名', '已生成报名进度分析')
 
     @staticmethod
     def create(e):
         e['registration_path'] = '/join/' + e['id']
-        log(e, '报名 Agent', '已创建报名表与参与者入口，宣传确认后开放报名')
+        log(e, '报名', '已创建报名表与参与者入口，宣传确认后开放报名')
 
     @staticmethod
     def register(e, data):
@@ -182,7 +224,7 @@ class RegistrationAgent:
              'needs': str(data.get('needs', ''))[:1000], 'question': str(data.get('question', ''))[:1000],
              'source': str(data.get('source', '直接访问'))[:100], 'at': now(), 'checked_at': None, 'late': False}
         e['registrations'].append(r)
-        log(e, '报名 Agent', '新增报名，当前共 ' + str(len(e['registrations'])) + ' 人')
+        log(e, '报名', '新增报名，当前共 ' + str(len(e['registrations'])) + ' 人')
         return {'ticket': r['id'], 'name': r['name']}
 
 
@@ -194,7 +236,7 @@ class PublicityAgent:
             s = metrics(e)
             core = f"{b['name']}已结束，共 {s['registration']} 人报名，{s['attendance']} 人到场，收到 {s['feedback']} 份反馈。" + (f"平均满意度 {s['satisfaction']} / 5。" if s['satisfaction'] is not None else '满意度暂缺有效评分。')
         else:
-            core = f"{b['name']}\n面向{b['audience']}，一起探索：{b['objective']}。\n时间：{b['date'].replace('T', ' ')}\n地点：{b['location']}\n主办方：{b['organizer']}\n报名入口：{e['registration_path']}"
+            core = f"{b['name']}\n面向{b['audience']}，一起探索：{b.get('objective') or b['name']}。\n时间：{b['date'].replace('T', ' ')}\n地点：{b['location']}\n主办方：{b.get('organizer') or '待定'}\n报名入口：{e['registration_path']}"
         fallback = {'article': core + '\n\n' + ('感谢每一位参与者的投入，期待下一次相聚。' if recap else '欢迎带着问题和好奇心前来，与同学们一起交流。'),
                   'group': core + ('\n感谢参与，期待再见！' if recap else '\n欢迎报名参加！'),
                   'schedule': ['T-7 首轮招募', 'T-3 活动亮点与报名进度', 'T-1 活动提醒'] if not recap else ['复盘确认后发布活动总结']}
@@ -209,7 +251,7 @@ class PublicityAgent:
         result['approved'] = False
         e['recap' if recap else 'publicity'] = result
         e['state'] = 'WAITING_RECAP_CONFIRMATION' if recap else 'WAITING_PUBLICITY_CONFIRMATION'
-        log(e, '宣传 Agent', ('活动总结' if recap else '宣传稿与发布节奏') + '已生成，等待负责人确认')
+        log(e, '宣传', ('活动总结' if recap else '宣传稿与发布节奏') + '已生成，等待负责人确认')
 
 
 class OnsiteAgent:
@@ -232,7 +274,7 @@ class OnsiteAgent:
         e['onsite_analysis'] = result
         if result['adjustment']:
             e['pending_adjustment'] = result['adjustment']
-        log(e, '现场 Agent', '已生成现场分析' + ('，流程调整等待负责人确认' if result['adjustment'] else ''))
+        log(e, '现场', '已生成现场分析' + ('，流程调整等待负责人确认' if result['adjustment'] else ''))
 
     @staticmethod
     def checkin(e, rid):
@@ -244,7 +286,7 @@ class OnsiteAgent:
         if not r['checked_at']:
             r['checked_at'] = now()
             r['late'] = datetime.now() > datetime.fromisoformat(e['brief']['date'])
-            log(e, '现场 Agent', '完成一次签到')
+            log(e, '现场', '完成一次签到')
         return {'checked_at': r['checked_at'], 'name': r['name']}
 
     @staticmethod
@@ -263,7 +305,7 @@ class OnsiteAgent:
             existing.update(feedback)
         else:
             e['feedback_pool'].append(feedback)
-        log(e, '现场 Agent', '收到参与者反馈')
+        log(e, '现场', '收到参与者反馈')
         return {'ok': True}
 
 
@@ -306,7 +348,7 @@ class ReviewAgent:
         report = {**result, 'metrics': s, 'comparison': comparison, 'generated_at': now(), 'approved': False}
         e['review'] = report
         e['state'] = 'WAITING_REVIEW_CONFIRMATION'
-        log(e, '复盘 Agent', '已汇总真实报名、签到和去重反馈数据，等待确认')
+        log(e, '复盘', '已汇总真实报名、签到和去重反馈数据，等待确认')
 
 
 class Orchestrator:
@@ -346,11 +388,11 @@ class Orchestrator:
         elif action == 'edit_plan':
             e['plan']['summary'] = text(data.get('summary'), '方案正文', 30000)
             e['revision'] += 1
-            log(e, '策划 Agent', '负责人修改方案正文，等待确认')
+            log(e, '策划', '负责人修改方案正文，等待确认')
         elif action == 'confirm_plan':
             e['state'] = 'PLAN_CONFIRMED'
             e['approved_plan'] = json.loads(json.dumps(e['plan']))
-            log(e, '总控 Agent', '负责人确认策划第 ' + str(e['revision']) + ' 版')
+            log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版')
             RegistrationAgent.create(e)
         elif action == 'publicity':
             PublicityAgent.generate(e, instruction=data.get('instruction', ''))
@@ -358,14 +400,14 @@ class Orchestrator:
             key = 'recap' if action == 'edit_recap' else 'publicity'
             for field in ('article', 'group'):
                 e[key][field] = text(data.get(field), '文案', 30000)
-            log(e, '宣传 Agent', '负责人更新待确认文案')
+            log(e, '宣传', '负责人更新待确认文案')
         elif action == 'confirm_publicity':
             e['publicity']['approved'] = True
             e['state'] = 'REGISTRATION_OPEN'
-            log(e, '总控 Agent', '负责人确认宣传，已开放本站报名；外部渠道需手动发布')
+            log(e, '总控', '负责人确认宣传，已开放本站报名；外部渠道需手动发布')
         elif action == 'start':
             e['state'] = 'LIVE'
-            log(e, '现场 Agent', '负责人开启现场，报名关闭，签到开放')
+            log(e, '现场', '负责人开启现场，报名关闭，签到开放')
         elif action == 'checkin':
             OnsiteAgent.checkin(e, data.get('ticket'))
         elif action == 'adjust':
@@ -376,7 +418,7 @@ class Orchestrator:
             if not any(t['id'] == item_id for t in e['plan']['timeline']):
                 raise Problem('请选择调整起点')
             e['pending_adjustment'] = {'minutes': mins, 'item_id': item_id, 'reason': text(data.get('reason'), '调整原因', 1000)}
-            log(e, '现场 Agent', '提出时间线调整建议，待负责人确认')
+            log(e, '现场', '提出时间线调整建议，待负责人确认')
         elif action == 'approve_adjustment':
             pending = e.get('pending_adjustment')
             if not pending:
@@ -388,38 +430,38 @@ class Orchestrator:
                     t['time'] = (datetime.fromisoformat(t['time']) + timedelta(minutes=pending['minutes'])).isoformat(timespec='minutes')
             e['adjustments'].append({**pending, 'at': now()})
             e['pending_adjustment'] = None
-            log(e, '总控 Agent', '负责人批准流程调整：' + pending['reason'])
+            log(e, '总控', '负责人批准流程调整：' + pending['reason'])
         elif action == 'reject_adjustment':
             e['pending_adjustment'] = None
-            log(e, '总控 Agent', '负责人拒绝流程调整')
+            log(e, '总控', '负责人拒绝流程调整')
         elif action == 'finish':
             if e.get('pending_adjustment'):
                 raise Problem('请先处理待确认流程调整')
             e['state'] = 'FEEDBACK'
-            log(e, '现场 Agent', '活动结束，开放活动后反馈')
+            log(e, '现场', '活动结束，开放活动后反馈')
         elif action == 'review':
             ReviewAgent.generate(e)
         elif action == 'confirm_review':
             e['review']['approved'] = True
-            log(e, '总控 Agent', '负责人确认复盘，反馈收集关闭')
+            log(e, '总控', '负责人确认复盘，反馈收集关闭')
             PublicityAgent.generate(e, recap=True)
         elif action == 'confirm_recap':
             e['recap']['approved'] = True
             e['state'] = 'COMPLETED'
-            log(e, '总控 Agent', '负责人确认总结，活动归档；外部渠道需手动发布')
+            log(e, '总控', '负责人确认总结，活动归档；外部渠道需手动发布')
         elif action == 'answer':
             rid = data.get('ticket')
             r = next((r for r in e['registrations'] if r['id'] == rid), None)
             if not r:
                 raise Problem('报名记录不存在')
             r['answer'] = text(data.get('answer'), '答复', 5000)
-            log(e, '报名 Agent', '负责人回复参与者提问，参与者可凭报名凭证查看')
+            log(e, '报名', '负责人回复参与者提问，参与者可凭报名凭证查看')
 
 
 def new_event(name='未命名活动'):
     e = {'id': secrets.token_urlsafe(9), 'state': 'DRAFT', 'brief': {'name': text(name, '活动名称', 500)}, 'revision': 0,
          'registrations': [], 'feedback_pool': [], 'logs': [], 'adjustments': [], 'created_at': now()}
-    log(e, '总控 Agent', '创建活动，等待补充策划信息')
+    log(e, '总控', '创建活动，等待补充策划信息')
     return e
 
 

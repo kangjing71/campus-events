@@ -84,7 +84,19 @@ class Provider(BaseHTTPRequestHandler):
             result['budget'][0]['amount'] = context['brief']['budget'] + 1
         if custom:
             return self.send(200, result)
-        return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': json.dumps(result, ensure_ascii=False)}}]})
+        content = json.dumps(result, ensure_ascii=False)
+        if data.get('stream'):
+            third = max(1, len(content) // 3)
+            chunks = [{'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': content[i:i + third]}}]}
+                      for i in range(0, len(content), third)]
+            chunks[-1]['choices'][0]['finish_reason'] = 'stop'
+            body = b''.join(b'data: ' + json.dumps(chunk, ensure_ascii=False).encode() + b'\n\n' for chunk in chunks) + b'data: [DONE]\n\n'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        return self.send(200, {'choices': [{'message': {'role': 'assistant', 'content': content}}]})
 
 
 if __name__ == '__main__':

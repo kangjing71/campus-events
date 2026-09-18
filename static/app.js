@@ -61,19 +61,30 @@ function overview() {
   const tasks=nextTasks[e.state];
   return `<div class="overview-grid"><div class="event-feature">${badge(e.state)}<h2>${esc(b.name)}</h2><div class="event-meta"><span>${icon('calendar-days')}${day(b.date)}</span><span>${icon('map-pin')}${esc(b.location||'地点待确定')}</span><span>${icon('users')}${esc(b.organizer||'主办方待确定')}</span></div></div><div class="next-task"><span class="eyebrow">下一步 · NEXT UP</span><h3>${tasks[0]}</h3><p>${tasks[1]}</p><button class="primary" data-page="${statePage[e.state]}">${tasks[2]}${icon('arrow-up-right')}</button></div></div>
   ${metricCards(e)}<div class="section-head"><h2>活动进程</h2><span class="small muted">负责人确认后推进</span></div>${stages(e)}
-  <div class="columns"><div><div class="section-head"><h2>Agent 协作</h2><span class="badge gray">6 个角色</span></div><div class="agent-list">${[['workflow','总控 Agent',labels[e.state]],['clipboard-list','策划 Agent',e.plan?'方案已生成 · 第 '+e.revision+' 版':'等待活动需求'],['megaphone','宣传 Agent',e.publicity?(e.publicity.approved?'宣传已确认':'文案待确认'):'等待策划确认'],['users','报名 Agent',e.registration_path?'累计 '+e.metrics.registration+' 人报名':'等待策划确认'],['radio','现场 Agent',e.state==='LIVE'?'现场执行中':'已签到 '+e.metrics.attendance+' 人'],['chart-no-axes-combined','复盘 Agent',e.review?'报告已生成':'等待活动数据']].map(([ico,name,status])=>`<div class="agent"><div class="agent-icon">${icon(ico)}</div><div><h3>${name}</h3><p>${esc(status)}</p></div></div>`).join('')}</div></div><div><div class="section-head"><h2>最近动态</h2><span class="small muted">${e.logs.length} 条记录</span></div>${logs(e.logs.slice(-4))}</div></div>`;
+  <div class="columns"><div><div class="section-head"><h2>智能协作</h2><span class="badge gray">6 个角色</span></div><div class="agent-list">${[['workflow','总控',labels[e.state]],['clipboard-list','策划',e.plan?'方案已生成 · 第 '+e.revision+' 版':'等待活动需求'],['megaphone','宣传',e.publicity?(e.publicity.approved?'宣传已确认':'文案待确认'):'等待策划确认'],['users','报名',e.registration_path?'累计 '+e.metrics.registration+' 人报名':'等待策划确认'],['radio','现场',e.state==='LIVE'?'现场执行中':'已签到 '+e.metrics.attendance+' 人'],['chart-no-axes-combined','复盘',e.review?'报告已生成':'等待活动数据']].map(([ico,name,status])=>`<div class="agent"><div class="agent-icon">${icon(ico)}</div><div><h3>${name}</h3><p>${esc(status)}</p></div></div>`).join('')}</div></div><div><div class="section-head"><h2>最近动态</h2><span class="small muted">${e.logs.length} 条记录</span></div>${logs(e.logs.slice(-4))}</div></div>`;
 }
 function logs(items) { return `<ul class="activity">${[...items].reverse().map(l=>`<li><p>${esc(l.message)}</p><time>${esc(l.agent)} · ${fmt(l.at)}</time></li>`).join('')}</ul>`; }
 function planForm() {
   const b=event.brief;
-  return `<form id="plan-form"><div class="form-grid">${field('name','活动名称 *','text',b.name,'required maxlength="100"')}${field('objective','活动目标 *','text',b.objective,'required')}${field('type','活动类型 *','text',b.type,'required placeholder="如：交流分享"')}${field('level','活动级别 *','text',b.level,'required placeholder="如：校级"')}${field('format','活动形式 *','text',b.format,'required placeholder="如：线下分享与讨论"')}${field('audience','目标参与者 *','text',b.audience,'required')}${field('date','活动开始时间 *','datetime-local',b.date,'required')}${field('duration','活动时长（分钟） *','number',b.duration||120,'required min="30" max="720"')}${field('location','活动地点 *','text',b.location,'required')}${field('capacity','预计人数 *','number',b.capacity||100,'required min="1" max="100000"')}${field('budget','活动预算（元） *','number',b.budget??1000,'required min="0" step="0.01"')}${field('organizer','主办方 *','text',b.organizer,'required')}${field('owner','负责人 *','text',b.owner,'required')}<div class="field full"><label for="constraints">额外约束</label><textarea id="constraints" name="constraints" placeholder="嘉宾时间、场地限制、活动偏好……">${esc(b.constraints||'')}</textarea></div></div><div class="form-actions"><button class="primary" type="submit">${icon('sparkles')}${event.plan?'重新生成策划':'生成策划方案'}</button></div></form>`;
+  return `<form id="plan-form"><div class="form-grid">${field('name','活动名称 *','text',b.name,'required maxlength="100"')}${field('objective','活动目标','text',b.objective,'maxlength="500"')}${field('type','活动类型 *','text',b.type,'required placeholder="如：交流分享"')}${field('level','活动级别','text',b.level,'placeholder="如：校级"')}${field('format','活动形式 *','text',b.format,'required placeholder="如：线下分享与讨论"')}${field('audience','目标参与者 *','text',b.audience,'required')}${field('date','活动开始时间 *','datetime-local',b.date,'required')}${field('duration','活动时长（分钟） *','number',b.duration||120,'required min="30" max="720"')}${field('location','活动地点 *','text',b.location,'required')}${field('capacity','预计人数 *','number',b.capacity||100,'required min="1" max="100000"')}${field('budget','活动预算（元） *','number',b.budget??1000,'required min="0" step="0.01"')}${field('organizer','主办方','text',b.organizer,'maxlength="200"')}${field('owner','负责人','text',b.owner,'maxlength="100"')}<div class="field full"><label for="constraints">额外约束</label><textarea id="constraints" name="constraints" placeholder="嘉宾时间、场地限制、活动偏好……">${esc(b.constraints||'')}</textarea></div></div><div class="form-actions"><button class="primary" type="submit">${icon('sparkles')}${event.plan?'重新生成策划':'生成策划方案'}</button></div></form>`;
+}
+function chatBubble(m) {
+  const qs=(m.questions||[]).map(q=>`<p>${esc(q)}</p>`).join('');
+  const miss=m.missing_fields?.length?`<p class="small muted">待补充：${m.missing_fields.map(esc).join('、')}</p>`:'';
+  return `<div class="chat-row ${m.role==='user'?'from-user':''}"><div class="chat-bubble"><p>${esc(m.content)}</p>${qs}${miss}</div></div>`;
+}
+function planDraft() {
+  const e=event, msgs=e.planning_messages||[];
+  const ready=msgs.length>0 && !(msgs[msgs.length-1].missing_fields||[]).length;
+  const welcome=`<div class="chat-welcome"><h2>告诉我想办什么活动</h2><p>用一两句话描述你的想法，我会逐步追问细节，信息齐全后生成完整方案。</p><div class="chips"><button class="chip" data-chat-example="想办一场 100 人的 AI 交流会，预算 1200 元，促进跨学院交流，下周五晚上在学生活动中心">办一场 AI 交流会</button><button class="chip" data-chat-example="想办一场户外草坪音乐节，面向全校师生，预算 5000 元，需要安排舞台和音响">办一场草坪音乐节</button><button class="chip" data-chat-example="想办一次求职经验分享会，邀请 3 位已毕业的学长学姐，规模 50 人左右，预算 500 元">办一场求职分享会</button></div></div>`;
+  return `<div class="chat-wrap"><div class="chat-scroll">${msgs.length?msgs.map(chatBubble).join(''):welcome}</div><div class="chat-compose">${ready?button('生成策划方案','plan-from-chat',true,'sparkles'):'<p class="small muted">还差一些信息，继续聊聊吧</p>'}<form id="planning-chat-form"><label class="sr-only" for="planning-message">用一段话描述活动</label><textarea id="planning-message" name="message" required maxlength="6000" placeholder="${msgs.length?'继续补充活动信息……':'例如：想办一场 100 人的 AI 交流会，预算 1200 元，下周五晚上在学生活动中心'}"></textarea><button class="primary chat-send" type="submit" aria-label="发送">${icon('send')}</button></form></div></div>`;
 }
 function planView() {
   const e=event,p=e.plan;
-  if (!p) return `<div class="section-head"><h2>活动基本信息</h2><span class="small muted">策划 Agent</span></div>${planForm()}`;
+  if (!p) return planDraft();
   const editable=e.state==='WAITING_PLAN_CONFIRMATION';
-  return `${editable?'<div class="inline-note warning">待负责人核对方案、额外约束和时间线，确认后进入宣传准备。</div>':''}<div class="section-head"><h2>活动方案 <span class="small muted">版本 ${e.revision}</span></h2><div class="actions">${editable?button('修改需求','edit-brief',false,'pencil')+button('确认策划方案','confirm_plan',true,'check'):badge(e.state)}</div></div><div class="prose">${esc(p.summary)}</div>${editable?`<div class="form-actions">${button('编辑方案正文','edit-summary',false,'pencil')}</div>`:''}
-    <div class="columns section"><div><h2>活动当天 Timeline</h2>${timeline(p.timeline)}</div><div><h2>筹备 Timeline</h2><ul class="timeline">${p.preparation.map(t=>`<li><time>${t.day}</time><span>${esc(t.task)}</span></li>`).join('')}</ul></div></div>
+  return `${editable?'<div class="inline-note warning">请核对方案内容，确认后进入宣传阶段。</div>':''}<div class="section-head"><h2>活动方案 <span class="small muted">版本 ${e.revision}</span></h2><div class="actions">${editable?button('修改需求','edit-brief',false,'pencil')+button('确认策划方案','confirm_plan',true,'check'):badge(e.state)}</div></div><div class="prose">${esc(p.summary)}</div>${editable?`<div class="form-actions">${button('编辑方案正文','edit-summary',false,'pencil')}</div>`:''}
+    <div class="columns section"><div><h2>活动流程安排</h2>${timeline(p.timeline)}</div><div><h2>筹备进度安排</h2><ul class="timeline">${p.preparation.map(t=>`<li><time>${t.day}</time><span>${esc(t.task)}</span></li>`).join('')}</ul></div></div>
     <div class="columns section"><div><div class="section-head"><h2>预算分配</h2><span class="small muted">总计 ¥ ${e.brief.budget.toLocaleString()}</span></div><table><thead><tr><th>预算项目</th><th>金额</th></tr></thead><tbody>${p.budget.map(b=>`<tr><td>${esc(b.item)}</td><td>¥ ${b.amount.toLocaleString()}</td></tr>`).join('')}</tbody></table><div class="section"><h2>物资需求</h2><ul class="check-list">${p.materials.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div></div><div><h2>人员分工</h2><ul class="timeline">${p.roles.map(r=>`<li><time>${esc(r.role)}</time><span>${esc(r.task)}</span></li>`).join('')}</ul><div class="section"><h2>风险预案</h2><ul class="check-list">${p.risks.map(r=>`<li>${esc(r)}</li>`).join('')}</ul></div></div></div><div class="section"><h2>活动成功指标</h2>${comparison(p.targets)}</div>`;
 }
 function timeline(items) { return `<ul class="timeline">${items.map(t=>`<li><time>${t.time.slice(11,16)}</time><span>${esc(t.title)}<small>${day(t.time)} · ${esc(t.owner)}</small></span></li>`).join('')}</ul>`; }
@@ -88,7 +99,7 @@ function publicityView(recap=false) {
   return `${editable?'<div class="inline-note warning">文案待确认。本站不直接连接微信公众号或社交平台，确认后可复制文案与下载海报。</div>':'<div class="inline-note">文案已确认，可复制到外部渠道发布。</div>'}<div class="section-head"><h2>${recap?'活动总结宣传':'活动宣传素材'}</h2><div class="actions">${editable?button('修改文案',recap?'edit-recap':'edit-copy',false,'pencil')+button(recap?'确认总结并归档':'确认宣传并开放报名',recap?'confirm_recap':'confirm_publicity',true,'check'):''}</div></div><div class="split"><div><div class="tabbar"><button class="${pubTab==='article'?'active':''}" data-tab="article">微信公众号</button><button class="${pubTab==='group'?'active':''}" data-tab="group">微信群 / 朋友圈</button></div><div class="prose">${esc(p[pubTab]).replaceAll(esc(e.registration_path),esc(link()))}</div><div class="form-actions">${button('复制文案',recap?'copy-recap':'copy-content',false,'copy')}</div><div class="section"><h2>宣传节奏</h2><ul class="timeline">${p.schedule.map((s,i)=>`<li><time>0${i+1}</time><span>${esc(s)}</span></li>`).join('')}</ul></div></div><div><div class="poster"><div class="poster-photo"></div><span class="eyebrow">CAMPUS TOGETHER / ${recap?'活动回顾':'校园活动'}</span><h2>${esc(e.brief.name)}</h2><p>${recap?`${e.metrics.registration} 人报名 · ${e.metrics.attendance} 人到场` :esc(e.brief.objective)}</p><p>${fmt(e.brief.date)}<br>${esc(e.brief.location)}<br>${esc(e.brief.organizer)}</p><canvas id="qr" aria-label="活动入口二维码"></canvas><span class="small">${recap?'活动参与者入口':'扫码报名 · 期待相遇'}</span></div><div class="form-actions">${button('下载海报',recap?'poster-recap':'poster',false,'download')}</div></div></div>`;
 }
 function registrationView() {
-  if (!event.registration_path) return empty('报名入口尚未创建','确认策划后，由报名 Agent 创建入口。');
+  if (!event.registration_path) return empty('报名入口尚未创建','确认策划后，由系统自动创建入口。');
   return `<div class="link-box">${icon('link')}<a target="_blank" rel="noopener" href="${esc(link())}">${esc(link())}</a>${button('复制链接','copy-link',false,'copy')}${button('二维码','show-qr',false,'qr-code')}</div>${event.state==='PLAN_CONFIRMED'||event.state==='WAITING_PUBLICITY_CONFIRMATION'?'<div class="inline-note warning">报名入口已创建，宣传确认后开放提交。</div>':''}${metricCards(event)}<div class="section-head"><h2>报名人员 <span class="small muted">${event.registrations.length} 人</span></h2><div class="actions"><input class="search" id="search" aria-label="搜索报名人员" placeholder="搜索姓名、邮箱、学院">${button('导出名单','export',false,'download')}${event.state==='REGISTRATION_OPEN'?button('开启现场签到','start',true,'radio'):''}</div></div><div id="registration-table">${registrationTable(event.registrations)}</div><div class="columns section"><div><h2>近 7 天报名趋势</h2>${trend()}</div><div><h2>学院分布</h2>${distribution()}</div></div>`;
 }
 function registrationTable(rows) {
@@ -115,20 +126,16 @@ function feedbackList() { return event.feedback_pool.length?event.feedback_pool.
 function reviewView() {
   const e=event,r=e.review;
   if(!r) return empty('让每次活动都有下一次的进步',e.state==='FEEDBACK'?`当前已收到 ${e.metrics.feedback} 位参与者的反馈，可生成复盘报告。`:'活动结束后，根据报名、到场和反馈数据生成复盘。',e.state==='FEEDBACK'?button('生成活动复盘','review',true,'sparkles'):'');
-  return `<div class="section-head"><h2>活动复盘报告</h2><div class="actions">${e.state==='WAITING_REVIEW_CONFIRMATION'?button('重新生成','review',false,'refresh-cw')+button('确认复盘，生成总结','confirm_review',true,'check'):''}${button('导出报告','report-download',false,'download')}</div></div><p class="prose">${esc(r.summary)}</p><div class="section"><div class="section-head"><h2>目标 vs 实际</h2><span class="small muted">评分样本 ${r.metrics.rating_count} 份</span></div>${comparison(e.plan.targets,r.comparison)}</div><div class="columns section"><div><h2>下一次改进建议</h2><ul class="check-list">${r.suggestions.map(s=>`<li>${esc(s)}</li>`).join('')}</ul><div class="section"><h2>宣传效果</h2><p class="muted small">当前仅记录报名来源，未接入外部平台曝光和阅读数据。</p>${sourceTable()}</div></div><div><h2>参与者评价</h2>${feedbackList()}</div></div><div class="section"><h2>执行与调整记录</h2><div class="spacer"></div>${logs(e.logs.filter(l=>['现场 Agent','总控 Agent'].includes(l.agent)).slice(-8))}</div>${e.recap?`<div class="section">${publicityView(true)}</div>`:''}`;
+  return `<div class="section-head"><h2>活动复盘报告</h2><div class="actions">${e.state==='WAITING_REVIEW_CONFIRMATION'?button('重新生成','review',false,'refresh-cw')+button('确认复盘，生成总结','confirm_review',true,'check'):''}${button('导出报告','report-download',false,'download')}</div></div><p class="prose">${esc(r.summary)}</p><div class="section"><div class="section-head"><h2>目标 vs 实际</h2><span class="small muted">评分样本 ${r.metrics.rating_count} 份</span></div>${comparison(e.plan.targets,r.comparison)}</div><div class="columns section"><div><h2>下一次改进建议</h2><ul class="check-list">${r.suggestions.map(s=>`<li>${esc(s)}</li>`).join('')}</ul><div class="section"><h2>宣传效果</h2><p class="muted small">当前仅记录报名来源，未接入外部平台曝光和阅读数据。</p>${sourceTable()}</div></div><div><h2>参与者评价</h2>${feedbackList()}</div></div><div class="section"><h2>执行与调整记录</h2><div class="spacer"></div>${logs(e.logs.filter(l=>['现场','总控'].includes(l.agent)).slice(-8))}</div>${e.recap?`<div class="section">${publicityView(true)}</div>`:''}`;
 }
 function sourceTable(){const map={};event.registrations.forEach(r=>map[r.source]=(map[r.source]||0)+1);return `<ul class="timeline">${Object.entries(map).map(([s,n])=>`<li><time>${n} 人</time><span>${esc(s)}</span></li>`).join('')}</ul>`;}
 function agentPanel() {
   const role={plan:'planning',publicity:'publicity',registration:'registration',onsite:'onsite',review:'review'}[page];
   if(!role)return '';
   const setting=agentSettings[role]||{}, e=event;
-  const label={model:'模型已配置',rules:'规则模式',error:'配置异常'}[setting.mode]||'未连接';
-  let body=`<div class="section-head"><h2>${esc(setting.name||'')} Agent</h2><span class="badge ${setting.mode==='model'?'':'amber'}">${label}${setting.model?' · '+esc(setting.model):''}</span></div>`;
+  let body='';
   if(setting.error)body+=`<div class="inline-note warning">${esc(setting.error)}</div>`;
-  if(role==='planning'&&['DRAFT','WAITING_PLAN_CONFIRMATION'].includes(e.state)){
-    body+=`<div class="agent-chat" aria-live="polite">${(e.planning_messages||[]).slice(-8).map(m=>`<div class="chat-message ${m.role==='user'?'from-user':''}"><strong>${m.role==='user'?'负责人':'策划 Agent'}</strong><p>${esc(m.content)}</p>${(m.questions||[]).map(q=>`<p>${esc(q)}</p>`).join('')}${m.missing_fields?.length?`<p class="small muted">待补充：${m.missing_fields.map(esc).join('、')}</p>`:''}</div>`).join('')}</div><form id="planning-chat-form"><div class="field"><label for="planning-message">活动想法或补充信息</label><textarea id="planning-message" name="message" required maxlength="6000" placeholder="想办一场 100 人的 AI 交流会，预算 1200 元……"></textarea></div><div class="form-actions">${button(e.plan?'按对话重新生成方案':'根据已收集需求生成方案','plan-from-chat',false,'file-check')}<button class="primary" type="submit">${icon('send')}发送给策划 Agent</button></div></form>`;
-  }
-  if(role==='publicity'&&['PLAN_CONFIRMED','WAITING_PUBLICITY_CONFIRMATION'].includes(e.state)&&e.publicity)body+=`<div class="actions">${button('让 Agent 修改文案','revise-publicity',false,'sparkles')}</div>`;
+  if(role==='publicity'&&['PLAN_CONFIRMED','WAITING_PUBLICITY_CONFIRMATION'].includes(e.state)&&e.publicity)body+=`<div class="actions">${button('智能修改文案','revise-publicity',false,'sparkles')}</div>`;
   if(role==='registration'&&['REGISTRATION_OPEN','LIVE','FEEDBACK'].includes(e.state)){
     body+=`<div class="actions">${button('分析报名情况','analyze_registration',false,'sparkles')}</div>`;
     const a=e.registration_analysis;if(a)body+=`<p class="prose analysis-summary">${esc(a.summary)}</p><ul class="check-list">${a.suggestions.map(s=>`<li>${esc(s)}</li>`).join('')}</ul>${a.needs_attention.length?`<p class="small muted">待处理：${a.needs_attention.map(esc).join('；')}</p>`:''}`;
@@ -138,12 +145,12 @@ function agentPanel() {
     const a=e.onsite_analysis;if(a)body+=`<p class="prose analysis-summary">${esc(a.summary)}</p>${a.issues.map(i=>`<div class="feedback-item"><strong>${esc(i.topic)}</strong><p>${esc(i.suggestion)}</p><p class="small muted">依据：${i.evidence_ids.map(esc).join('、')||'工作人员情况 / 时间线'}</p></div>`).join('')}`;
   }
   if(role==='review'&&e.review?.findings?.length)body+=e.review.findings.map(f=>`<div class="feedback-item"><p>${esc(f.observation)}</p>${f.hypothesis?`<p class="muted">可能原因：${esc(f.hypothesis)}</p>`:''}<p class="small muted">依据：${f.evidence_ids.map(esc).join('、')}</p></div>`).join('');
-  if(role==='review'&&e.state==='WAITING_RECAP_CONFIRMATION')body+=button('让宣传 Agent 修改总结','revise-recap',false,'sparkles');
-  return `<section class="agent-workspace">${body}</section>`;
+  if(role==='review'&&e.state==='WAITING_RECAP_CONFIRMATION')body+=button('智能修改总结','revise-recap',false,'sparkles');
+  return body?`<section class="agent-workspace">${body}</section>`:'';
 }
 function answerModal(r){
   const draft=r.answer_draft;
-  modal(`<h2>回复参与者提问</h2><p>${esc(r.question)}</p>${draft?`<div class="inline-note ${draft.needs_human?'warning':''}"><strong>${draft.needs_human?'需要负责人补充确认':'Agent 答复草稿'}</strong><p>${esc(draft.reason)}</p><p class="small">依据：${draft.evidence.map(esc).join('；')||'暂无明确依据'}</p></div>`:''}<form id="answer-form" data-ticket="${r.id}"><div class="field"><label for="answer">答复</label><textarea id="answer" name="answer" required maxlength="5000">${esc(draft?.answer||r.answer||'')}</textarea></div><div class="form-actions"><button type="button" data-ai-answer="${r.id}">${icon('sparkles')}生成答复草稿</button><button type="submit" class="primary">确认并保存答复</button></div></form>`);
+  modal(`<h2>回复参与者提问</h2><p>${esc(r.question)}</p>${draft?`<div class="inline-note ${draft.needs_human?'warning':''}"><strong>${draft.needs_human?'需要负责人补充确认':'答复草稿'}</strong><p>${esc(draft.reason)}</p><p class="small">依据：${draft.evidence.map(esc).join('；')||'暂无明确依据'}</p></div>`:''}<form id="answer-form" data-ticket="${r.id}"><div class="field"><label for="answer">答复</label><textarea id="answer" name="answer" required maxlength="5000">${esc(draft?.answer||r.answer||'')}</textarea></div><div class="form-actions"><button type="button" data-ai-answer="${r.id}">${icon('sparkles')}生成答复草稿</button><button type="submit" class="primary">确认并保存答复</button></div></form>`);
 }
 function renderHome() {
   const cards=events.map(e=>`<button class="project-card" data-open="${e.id}"><div class="card-head">${badge(e.state)}<span class="small muted">${esc(e.brief.owner||'')}</span></div><h3>${esc(e.brief.name)}</h3><div class="event-meta"><span>${icon('calendar-days')}${day(e.brief.date)}</span><span>${icon('map-pin')}${esc(e.brief.location||'地点待确定')}</span></div><div class="card-stats"><span>${icon('users')}${e.metrics.registration} 人报名</span><span>${icon('scan-line')}${e.metrics.attendance} 人签到</span><span>${icon('message-square')}${e.metrics.feedback} 条反馈</span></div><div class="card-foot"><span>下一步：${esc(nextTasks[e.state][0])}</span>${icon('arrow-up-right')}</div></button>`).join('');
@@ -160,6 +167,7 @@ function render() {
   const selected=pages.find(p=>p[0]===page);
   $('#app').innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><div class="sidebar-label">活动管理</div><nav class="nav">${pages.map(([id,ico,title])=>`<button data-page="${id}" class="${page===id?'active':''}">${icon(ico)}${title}${id==='registration'&&event?`<span class="nav-count">${event.metrics.registration}</span>`:''}</button>`).join('')}</nav></aside><main class="main"><header class="topbar"><div class="top-actions"><button class="icon-btn" data-action="go-home" title="返回项目列表">${icon('arrow-left')}</button>${events.length?`<select aria-label="切换活动" id="event-select">${events.map(e=>`<option value="${e.id}" ${e.id===event?.id?'selected':''}>${esc(e.brief.name)}</option>`).join('')}</select>`:''}<button class="icon-btn" data-action="refresh" title="刷新活动数据">${icon('refresh-cw')}</button></div></header><div class="content"><div class="heading"><div><h1>${selected[2]}</h1><p>${page==='overview'?'策划、宣传、报名、现场与复盘，一站式管理活动全流程。':esc(event?.brief.name||'')}</p></div><div class="actions">${event?.registration_path&&page==='overview'?`<a href="${esc(link())}" target="_blank" rel="noopener"><button>${icon('external-link')}参与者入口</button></a>`:''}</div></div>${event?({overview,plan:planView,publicity:publicityView,registration:registrationView,onsite:onsiteView,review:reviewView}[page])():empty('你的下一场活动，从这里开始','创建活动，填写需求，开始筹备。',button('创建第一场活动','new',true,'plus'))}</div></main></div>`;
   if(event)document.querySelector('.heading').insertAdjacentHTML('afterend',agentPanel());
+  const scroller=$('.chat-scroll'); if(scroller) scroller.scrollTop=scroller.scrollHeight;
   refresh();
 }
 function login() { $('#app').innerHTML=`<div class="login panel"><div class="brand"><span class="brand-mark">${icon('sprout')}</span>校园共创</div><h1>负责人登录</h1><form id="login-form">${field('key','负责人访问密钥','password','','required autocomplete="current-password"')}<div class="form-actions"><button class="primary" type="submit">登录${icon('arrow-right')}</button></div></form></div>`;refresh(); }
@@ -170,8 +178,57 @@ async function loadEvents(){
   render();
 }
 let booted=false;
-async function act(action,data={}){if(['planning_chat','plan','plan_from_brief','publicity','regenerate_recap','answer_question','analyze_registration','analyze_onsite','review','confirm_review'].includes(action))toast('Agent 正在处理，请稍候…');event=await api(`/api/events/${event.id}/actions/${action}`,{...data,expected_version:event.version});events=events.map(e=>e.id===event.id?event:e);render();toast('已完成：'+labels[event.state]);}
+async function act(action,data={}){if(['planning_chat','plan','plan_from_brief','publicity','regenerate_recap','answer_question','analyze_registration','analyze_onsite','review','confirm_review'].includes(action))toast('正在处理，请稍候…');event=await api(`/api/events/${event.id}/actions/${action}`,{...data,expected_version:event.version});events=events.map(e=>e.id===event.id?event:e);render();toast('已完成：'+labels[event.state]);}
 function modal(html) { $('#modal').innerHTML=html;$('#modal').showModal();refresh(); }
+async function streamPlanningChat(data) {
+  const message = String(data.message || '').trim();
+  if (!message || !event) return;
+  const e = event;
+  e.planning_messages = [...(e.planning_messages || []), {role: 'user', content: message}];
+  render();
+  let pendingText = '', gotDelta = false, finished = false, errorMessage = '';
+  const appendPending = () => {
+    const scroll = $('.chat-scroll'); if (!scroll) return;
+    scroll.querySelector('.chat-row.pending')?.remove();
+    if (pendingText) scroll.insertAdjacentHTML('beforeend', `<div class="chat-row pending"><div class="chat-bubble"><p>${esc(pendingText)}</p></div></div>`);
+    scroll.scrollTop = scroll.scrollHeight;
+  };
+  const handleFrame = (frame) => {
+    const lines = frame.split('\n');
+    let name = '', payload = null;
+    for (const line of lines) {
+      if (line.startsWith('event: ')) name = line.slice(7).trim();
+      else if (line.startsWith('data: ')) { try { payload = JSON.parse(line.slice(6)); } catch { payload = null; } }
+    }
+    if (!payload) return;
+    if (name === 'delta') { gotDelta = true; pendingText += payload.text || ''; appendPending(); }
+    else if (name === 'message') {
+      if (!gotDelta) { e.planning_messages = [...(e.planning_messages || []), {role: 'assistant', content: payload.reply, questions: payload.questions || [], missing_fields: payload.missing_fields || []}]; render(); }
+    } else if (name === 'done') { event = payload; events = events.map(x => x.id === payload.id ? payload : x); finished = true; render(); }
+    else if (name === 'error') errorMessage = payload.message || '生成失败';
+  };
+  try {
+    const response = await fetch('/api/events/' + e.id + '/chat_stream', {method: 'POST', headers: {'Content-Type': 'application/json', Authorization: 'Bearer ' + key}, body: JSON.stringify({message, expected_version: e.version})});
+    if (!response.ok || !response.body) throw new Error((await response.json().catch(() => ({}))).error || '流式接口不可用');
+    const reader = response.body.getReader(), decoder = new TextDecoder();
+    let buffer = '';
+    for (;;) {
+      const {done, value} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+      const frames = buffer.split('\n\n');
+      buffer = frames.pop();
+      frames.forEach(handleFrame);
+    }
+    if (buffer.trim()) handleFrame(buffer);
+    if (errorMessage) throw new Error(errorMessage);
+    if (!finished) throw new Error('流式响应中断');
+    toast('已完成：' + labels[event.state]);
+  } catch (err) {
+    toast(err.message, true);
+    await act('planning_chat', data);
+  }
+}
 function confirmAction(action,title,description) { modal(`<h2>${title}</h2><p>${description}</p><div class="form-actions">${button('取消','close',false,'x')}<button class="primary" data-confirm="${action}">${icon('check')}确认执行</button></div>`); }
 async function drawQR(){try{await window.QRCode.toCanvas($('#qr'),link(),{width:180,margin:2,color:{dark:'#244830',light:'#ffffff'}});}catch(e){toast('二维码生成失败',true);}}
 function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -192,6 +249,7 @@ document.addEventListener('click',ev=>{
   if(target.dataset.open){openProject(target.dataset.open);return;}
   if(target.dataset.page){page=target.dataset.page;render();return;}
   if(target.dataset.tab){pubTab=target.dataset.tab;render();return;}
+  if(target.dataset.chatExample){const t=$('#planning-message');if(t){t.value=target.dataset.chatExample;t.focus();}return;}
   if(target.dataset.publicTab){renderPublic(target.dataset.publicTab);return;}
   if(target.dataset.checkin){run(()=>act('checkin',{ticket:target.dataset.checkin}));return;}
   if(target.dataset.answer){answerModal(event.registrations.find(r=>r.id===target.dataset.answer));return;}
@@ -228,7 +286,7 @@ document.addEventListener('submit',ev=>{
     if(form.id==='login-form'){key=data.key.trim();await loadEvents();sessionStorage.setItem('campus-key',key);}
     if(form.id==='new-form'){event=await api('/api/events',data);events.unshift(event);view='workspace';page='overview';sessionStorage.setItem('campus-event',event.id);sessionStorage.setItem('campus-view','workspace');$('#modal').close();render();toast('活动已创建');}
     if(form.id==='plan-form'){await act('plan',data);$('#modal').close();}
-    if(form.id==='planning-chat-form')await act('planning_chat',data);
+    if(form.id==='planning-chat-form')await streamPlanningChat(data);
     if(form.id==='onsite-agent-form')await act('analyze_onsite',data);
     if(form.id==='agent-revise-form'){await act(form.dataset.kind,data);$('#modal').close();}
     if(form.id==='summary-form'){await act('edit_plan',data);$('#modal').close();}
@@ -240,7 +298,8 @@ document.addEventListener('submit',ev=>{
     if(form.id==='feedback-form'){await api(`/api/public/${publicId}/feedback`,{...data,ticket:ticket()});toast('反馈已保存，感谢参与');}
   });
 });
-document.addEventListener('input',ev=>{if(ev.target.id==='search'){const q=ev.target.value.toLowerCase();$('#registration-table').innerHTML=registrationTable(event.registrations.filter(r=>[r.name,r.email,r.college].some(v=>v.toLowerCase().includes(q))));refresh();}});
+document.addEventListener('input',ev=>{if(ev.target.id==='search'){const q=ev.target.value.toLowerCase();$('#registration-table').innerHTML=registrationTable(event.registrations.filter(r=>[r.name,r.email,r.college].some(v=>v.toLowerCase().includes(q))));refresh();}if(ev.target.id==='planning-message'){ev.target.style.height='auto';ev.target.style.height=Math.min(ev.target.scrollHeight,200)+'px';}});
+document.addEventListener('keydown',ev=>{if(ev.key==='Enter'&&!ev.shiftKey&&ev.target.id==='planning-message'){ev.preventDefault();ev.target.form.requestSubmit();}});
 document.addEventListener('change',ev=>{if(ev.target.id==='event-select'){event=events.find(e=>e.id===ev.target.value);if(event)sessionStorage.setItem('campus-event',event.id);render();}});
 $('#modal').addEventListener('close',()=>{if(!$('#modal').open)$('#modal').innerHTML='';});
 

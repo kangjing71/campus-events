@@ -3,13 +3,21 @@ const { spawn } = require('node:child_process');
 const { mkdtempSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
-let processHandle, folder, url, adminKey;
+let processHandle, providerHandle, folder, url, adminKey;
 const PYTHON = process.env.PYTHON_BIN || 'python3';
 
 test.beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), 'campus-e2e-'));
+  providerHandle = spawn(PYTHON, ['tests/mock_provider.py', '--port', '18769'], { cwd: process.cwd(), env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Mock provider did not start')), 10000);
+    providerHandle.stdout.on('data', d => { if (d.toString().includes('Mock ready')) { clearTimeout(timer); resolve(); } });
+    providerHandle.on('exit', code => { clearTimeout(timer); reject(new Error('Mock provider exited '+code)); });
+  });
   processHandle = spawn(PYTHON, ['server.py', '--port', '18765', '--public-base-url', 'http://localhost:18765'], {
-    cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_URL: '', AGENT_ENV_FILE:join(folder,'.env'), ...Object.fromEntries(['PLANNING','PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
+    cwd: process.cwd(), env: { ...process.env, EVENT_DB: join(folder, 'events.sqlite3'), MODEL_URL: '', AGENT_ENV_FILE:join(folder,'.env'),
+      PLANNING_API_URL: 'http://127.0.0.1:18769/planning', PLANNING_MODEL: 'test-planning', PLANNING_MODE: 'model', PLANNING_API_KEY: 'test', PLANNING_PROTOCOL: 'chat_completions',
+      ...Object.fromEntries(['PUBLICITY','REGISTRATION','ONSITE','REVIEW'].map(r=>[r+'_MODE','rules'])) },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let stderr = '';
@@ -25,6 +33,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   if(processHandle && processHandle.exitCode === null){processHandle.kill();await new Promise(resolve=>processHandle.on('exit',resolve));}
+  if(providerHandle && providerHandle.exitCode === null){providerHandle.kill();await new Promise(resolve=>providerHandle.on('exit',resolve));}
   if(folder)rmSync(folder,{recursive:true,force:true});
 });
 
@@ -36,10 +45,14 @@ test('complete organizer and participant lifecycle', async ({ page, browser, req
   await page.getByLabel('活动名称',{exact:true}).fill('校园 AI 创新交流夜');
   await page.getByRole('button',{name:'创建活动',exact:true}).click();
   await page.getByRole('button',{name:'开始策划'}).click();
-  const brief={name:'校园 AI 创新交流夜',objective:'认识 AI Agent 的实际应用，促进跨学院交流',type:'交流分享',level:'校级',format:'线下分享与互动讨论',audience:'全校对 AI 感兴趣的同学',date:'2099-12-01T19:00',duration:'120',location:'大学生活动中心 · 201 报告厅',capacity:'100',budget:'1200',organizer:'学生科技协会',owner:'活动负责人'};
-  for(const [k,v] of Object.entries(brief)) await page.locator(`#plan-form [name=${k}]`).fill(v);
+  await page.getByLabel('用一段话描述活动').fill('先讨论目标');
+  await page.getByRole('button',{name:'发送'}).click();
+  await expect(page.locator('.chat-scroll')).toContainText('请补充时间地点');
+  await page.getByLabel('用一段话描述活动').fill('补齐活动信息');
+  await page.getByRole('button',{name:'发送'}).click();
+  await expect(page.getByRole('button',{name:'生成策划方案'})).toBeVisible();
   await page.getByRole('button',{name:'生成策划方案'}).click();
-  await expect(page.getByText('活动当天 Timeline',{exact:true})).toBeVisible();
+  await expect(page.getByText('活动流程安排',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'确认策划方案',exact:true}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await page.getByRole('button',{name:'宣传中心'}).click();

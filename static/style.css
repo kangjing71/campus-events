@@ -16,3 +16,22 @@
 .card-foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:12px;font-size:12px;color:#4f8262}
 
 
+.content:has(.chat-wrap){display:flex;flex-direction:column;height:calc(100vh - 76px);overflow:hidden}
+.chat-wrap{max-width:840px;margin:0 auto;width:100%;flex:1;min-height:0;display:flex;flex-direction:column;gap:16px}
+.chat-scroll{flex:1;min-height:0;display:flex;flex-direction:column;gap:14px;overflow-y:auto;padding:4px 2px}
+.chat-row{display:flex}
+.chat-row.from-user{justify-content:flex-end}
+.chat-bubble{max-width:80%;padding:13px 16px;border-radius:14px;background:#fff;border:1px solid var(--line);font-size:13px;line-height:1.8}
+.chat-row.from-user .chat-bubble{background:#286d51;border-color:#286d51;color:#fff}
+.chat-bubble p{white-space:pre-wrap;overflow-wrap:anywhere}
+.chat-row.from-user .chat-bubble .muted{color:#cfe3d6}
+.chat-welcome{text-align:center;padding:70px 20px 40px;color:#66776d}
+.chat-welcome h2{font-size:22px;color:#2e3d33;margin-bottom:10px}
+.chips{display:flex;gap:10px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+.chip{border-radius:18px;padding:8px 16px;background:#fff;font-size:12px;color:#4f6a5a}
+.chat-compose{flex-shrink:0;border:1px solid #dce4de;border-radius:14px;background:#fff;padding:10px 10px 10px 16px;display:flex;gap:10px;align-items:flex-end;box-shadow:0 2px 12px #24483010}
+.chat-compose>form,.chat-compose form{display:flex;gap:10px;align-items:flex-end;flex:1;margin:0}
+.chat-compose textarea{border:0;outline:none;resize:none;overflow:hidden;min-height:44px;max-height:200px;flex:1;padding:10px 0;line-height:1.7;background:transparent;font:inherit}
+.chat-send{width:44px;height:44px;border-radius:50%;padding:0;flex-shrink:0}
+.chat-compose>.small{flex-shrink:0;padding-bottom:12px}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

@@ -39,7 +39,7 @@ class WorkflowTests(unittest.TestCase):
             self.register()
 
     def test_required_fields_and_numbers(self):
-        for key in s.FIELDS:
+        for key in list(s.REQUIRED) + ['duration']:
             brief = BRIEF.copy()
             del brief[key]
             with self.assertRaises(s.Problem):
@@ -47,6 +47,12 @@ class WorkflowTests(unittest.TestCase):
         for cap in ['nan', -1, 0, 1.5]:
             with self.assertRaises(s.Problem):
                 s.PlanningAgent.generate(self.e, dict(BRIEF, capacity=cap))
+
+    def test_optional_fields_may_be_omitted(self):
+        brief = {k: v for k, v in BRIEF.items() if k not in ('objective', 'level', 'organizer', 'owner', 'constraints')}
+        s.PlanningAgent.generate(self.e, brief)
+        self.assertEqual(self.e['brief']['owner'], '活动负责人')
+        self.assertEqual(self.e['state'], 'WAITING_PLAN_CONFIRMATION')
 
     def test_registration_cap_and_duplicates(self):
         self.open()
