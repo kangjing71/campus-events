@@ -52,12 +52,11 @@ test('five model roles are operable from the UI with approval gates',async({page
   await page.getByRole('button',{name:'开始实施'}).click();
   await page.getByRole('button',{name:'确认执行'}).click();
   await page.getByRole('button',{name:'宣传中心'}).click();
-  await expect(page.locator('.prose')).toContainText('模型公众号');
+  await expect(page.locator('.plan-md')).toContainText('模型公众号');
   await page.getByRole('button',{name:'智能修改文案'}).click();
   await page.getByLabel('修改要求').fill('缩短文案');
   await page.getByRole('button',{name:'生成新草稿'}).click();
-  await page.getByRole('button',{name:'确认宣传'}).click();
-  await page.getByRole('button',{name:'确认执行'}).click();
+  await expect(page.locator('.plan-md')).toContainText('模型公众号');
   await page.getByRole('button',{name:'报名管理'}).click();
   const joinUrl=await page.locator('.link-box a').getAttribute('href'),id=joinUrl.split('/').pop();
   const response=await request.post(`http://127.0.0.1:18767/api/public/${id}/register`,{data:{name:'同学',contact:'13800000000',email:'student@example.com',college:'学院',question:'在哪里举办？'}});
