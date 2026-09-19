@@ -47,6 +47,15 @@ def output(task, context):
         return {'answer': '活动地点：'+context['facts']['location'], 'needs_human': False, 'reason': '活动地点已有明确记录', 'evidence': [context['facts']['location']]}
     if task == 'analyze_registration':
         return {'summary': f"模型分析：已报名 {context['metrics']['registration']} 人。", 'suggestions': ['负责人在 T-3 核对报名进度。'], 'needs_attention': ['核对未答复问题']}
+    if task == 'plan_onsite_timeline':
+        b = context['brief']
+        start = datetime.fromisoformat(b['date'])
+        owner = b.get('owner') or '负责人'
+        return {'timeline': [{'time': start.isoformat(timespec='minutes'), 'title': '签到入场', 'owner': owner},
+                             {'time': (start + timedelta(minutes=10)).isoformat(timespec='minutes'), 'title': '开场', 'owner': owner},
+                             {'time': (start + timedelta(minutes=b.get('duration', 120))).isoformat(timespec='minutes'), 'title': '活动结束', 'owner': owner}]}
+    if task == 'handle_live_question':
+        return {'suggestion': '模型建议：现场工作人员立即跟进该问题。'}
     if task == 'analyze_onsite':
         timeline = context.get('timeline')
         return {'summary': '模型现场分析：建议顺延分享环节。',

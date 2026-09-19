@@ -388,6 +388,53 @@ class PublicityAgent:
 
 class OnsiteAgent:
     @staticmethod
+    def plan_timeline(e):
+        """实施时根据策划方案（plan.md）总结执行 Timeline。"""
+        plan_md = e.get('approved_plan_md') or e.get('plan_md')
+        if not plan_md:
+            return
+        owner = e['brief'].get('owner') or '负责人'
+        fallback_items = []
+        start = e['brief'].get('date')
+        if start:
+            try:
+                d = datetime.fromisoformat(start)
+                fallback_items = [{'time': d.isoformat(timespec='minutes'), 'title': '签到入场', 'owner': owner},
+                                  {'time': d.isoformat(timespec='minutes'), 'title': '活动开始', 'owner': owner},
+                                  {'time': (d + timedelta(minutes=e['brief'].get('duration') or 120)).isoformat(timespec='minutes'), 'title': '活动结束', 'owner': owner}]
+            except ValueError:
+                pass
+        fallback = {'timeline': fallback_items or [{'time': now(), 'title': '活动当天按策划方案执行', 'owner': owner}]}
+        context = {'current_time': now(), 'brief': e['brief'], 'plan_md': plan_md}
+        def check(output):
+            for t in output['timeline']:
+                time = datetime.fromisoformat(t['time'])
+                if time.tzinfo is not None:
+                    raise ValueError('时间必须为本地 ISO 格式')
+        result = invoke(e, 'onsite', 'plan_onsite_timeline', context, fallback,
+                        {'get_plan_md': tool('读取策划方案', plan_md)}, check)
+        e['onsite_timeline'] = result['timeline']
+        log(e, '现场', '已根据策划方案生成执行 Timeline')
+
+    @staticmethod
+    def advise_live(e, fid):
+        """就一条现场问题给出处理建议，写回该反馈条目。"""
+        f = next((x for x in e['feedback_pool'] if x.get('id') == fid), None)
+        if not f:
+            return
+        fallback = '请现场工作人员及时关注并处理该问题。'
+        context = {'current_time': now(), 'brief': e['brief'], 'plan_md': e.get('approved_plan_md') or e.get('plan_md') or '',
+                   'question': f['comment'], 'metrics': metrics(e)}
+        try:
+            result = invoke(e, 'onsite', 'handle_live_question', context, {'suggestion': fallback},
+                            {'get_plan_md': tool('读取策划方案', context['plan_md'])})
+            f['suggestion'] = result['suggestion']
+            log(e, '现场', '已就一条现场问题给出建议')
+        except Problem as ex:
+            f['suggestion'] = fallback
+            log(e, '现场', '现场问题建议生成失败：' + str(ex))
+
+    @staticmethod
     def analyze(e, data):
         if not e.get('plan') and not e.get('plan_md'):
             raise Problem('当前活动还没有策划方案，现场分析暂不可用')
@@ -424,7 +471,8 @@ class OnsiteAgent:
             raise Problem('报名凭证无效')
         if not r['checked_at']:
             r['checked_at'] = now()
-            r['late'] = datetime.now() > datetime.fromisoformat(e['brief']['date'])
+            date = e['brief'].get('date')
+            r['late'] = bool(date) and datetime.now() > datetime.fromisoformat(date)
             log(e, '现场', '完成一次签到')
         return {'checked_at': r['checked_at'], 'name': r['name']}
 
@@ -433,30 +481,38 @@ class OnsiteAgent:
         if e['state'] not in ('LIVE', 'FEEDBACK'):
             raise Problem('当前不在反馈收集阶段')
         rid = data.get('ticket')
-        r = next((r for r in e['registrations'] if r['id'] == rid), None)
-        if not r or not r['checked_at']:
+        r = next((r for r in e['registrations'] if r['id'] == rid), None) if rid else None
+        if rid and (not r or not r['checked_at']):
             raise Problem('请使用已签到的报名凭证提交反馈')
         phase = 'live' if e['state'] == 'LIVE' else 'post'
+        if phase == 'post' and not data.get('rating'):
+            raise Problem('请选择整体满意度')
         rating = number(data.get('rating'), '满意度', 1, 5, True) if data.get('rating') else None
-        feedback = {'ticket': rid, 'phase': phase, 'rating': rating, 'comment': text(data.get('comment'), '反馈', 2000), 'at': now()}
-        existing = next((f for f in e['feedback_pool'] if f['ticket'] == rid and f['phase'] == phase), None)
+        feedback = {'id': secrets.token_urlsafe(8), 'ticket': r['id'] if r else None, 'phase': phase, 'rating': rating, 'comment': text(data.get('comment'), '反馈', 2000), 'at': now()}
+        existing = next((f for f in e['feedback_pool'] if r and f['ticket'] == rid and f['phase'] == phase), None)
         if existing:
             existing.update(feedback)
         else:
             e['feedback_pool'].append(feedback)
         log(e, '现场', '收到参与者反馈')
-        return {'ok': True}
+        return {'ok': True, 'live_id': feedback['id'] if phase == 'live' else None}
 
 
 def metrics(e):
     registered = len(e['registrations'])
     attended = sum(bool(r['checked_at']) for r in e['registrations'])
-    ratings = {}
+    ratings, anonymous_ratings = {}, []
     for f in e['feedback_pool']:
-        if f['rating'] is not None:
+        if f['rating'] is None:
+            continue
+        if f.get('ticket'):
             ratings[f['ticket']] = f['rating']
+        else:
+            anonymous_ratings.append(f['rating'])
+    values = list(ratings.values()) + anonymous_ratings
+    feedback_count = len({f['ticket'] for f in e['feedback_pool'] if f.get('ticket')}) + sum(1 for f in e['feedback_pool'] if not f.get('ticket'))
     return {'registration': registered, 'attendance': attended, 'attendance_rate': round(attended / registered * 100, 1) if registered else None,
-            'feedback': len({f['ticket'] for f in e['feedback_pool']}), 'satisfaction': round(sum(ratings.values()) / len(ratings), 2) if ratings else None, 'rating_count': len(ratings)}
+            'feedback': feedback_count, 'satisfaction': round(sum(values) / len(values), 2) if values else None, 'rating_count': len(values)}
 
 
 class ReviewAgent:
@@ -543,6 +599,10 @@ class Orchestrator:
                 e['approved_plan'] = json.loads(json.dumps(e['plan']))
             log(e, '总控', '负责人确认策划第 ' + str(e['revision']) + ' 版，开始实施，报名开放')
             RegistrationAgent.create(e)
+            try:
+                OnsiteAgent.plan_timeline(e)
+            except Problem as ex:
+                log(e, '现场', '执行 Timeline 生成失败：' + str(ex))
             try:
                 PublicityAgent.generate(e)
                 e['publicity']['approved'] = True

@@ -37,6 +37,8 @@ SCHEMAS = {
     'collect_brief': obj({'brief_patch': obj(BRIEF_FIELDS, []), 'reply': string(5000), 'questions': array(string(1000), 0, 15)}),
     'generate_plan': PLAN,
     'generate_copy': obj({'copy': string(30000)}),
+    'plan_onsite_timeline': obj({'timeline': array(obj({'time': string(30), 'title': string(200), 'owner': string(100)}), 1, 40)}),
+    'handle_live_question': obj({'suggestion': string(2000)}),
     'answer_question': obj({'answer': string(5000, empty=True), 'needs_human': {'type': 'boolean'}, 'reason': string(2000), 'evidence': array(string(1000), 0, 20)}),
     'analyze_registration': obj({'summary': string(10000), 'suggestions': array(string(2000), 1, 20), 'needs_attention': array(string(1000), 0, 30)}),
     'analyze_onsite': obj({'summary': string(10000), 'issues': array(obj({'topic': string(300), 'evidence_ids': array(string(100), 0, 100), 'suggestion': string(2000)}), 0, 30),

@@ -96,9 +96,10 @@ class Handler(BaseHTTPRequestHandler):
             stream = re.fullmatch(r'/api/events/([\w-]+)/chat_stream', path)
             if stream and not public:
                 return self.chat_stream(stream[1], data)
-            with LOCK:
-                if public:
-                    eid, action = public.groups()
+            if public:
+                eid, action = public.groups()
+                live_id = version = None
+                with LOCK:
                     e = load(eid)
                     if action == 'register':
                         result = RegistrationAgent.register(e, data)
@@ -106,13 +107,25 @@ class Handler(BaseHTTPRequestHandler):
                         result = OnsiteAgent.checkin(e, data.get('ticket'))
                     elif action == 'feedback':
                         result = OnsiteAgent.feedback(e, data)
+                        live_id = result.pop('live_id', None)
                     else:
                         r = next((r for r in e['registrations'] if r['id'] == data.get('ticket')), None)
                         if not r:
                             raise Problem('报名凭证无效')
                         return self.send(200, {'name': r['name'], 'checked_at': r['checked_at'], 'answer': r.get('answer'), 'question': r['question']})
                     save(e)
-                    return self.send(200, result)
+                    version = e.get('version')
+                self.send(200, result)
+                if live_id:
+                    # 现场问题的建议生成（模型调用）放在响应之后、写锁之外
+                    with LOCK:
+                        e = load(eid)
+                    OnsiteAgent.advise_live(e, live_id)
+                    with LOCK:
+                        if load(eid).get('version') == version:
+                            save(e)
+                return
+            with LOCK:
                 if path == '/api/events':
                     e = new_event(data.get('name', '未命名活动'))
                     save(e)
